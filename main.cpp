@@ -19,10 +19,9 @@ using json = nlohmann::json;
 
 // ======================= CPU STRUCT ========================
 struct CPU {
-    uint8_t A, B, C, D, E, F, H, L;       // 8-bit registers
-    uint16_t PC = 0x00, STACK_P = 0;    // 16-bit registers with PC init
-
-    uint8_t clock_cycles;
+    uint8_t A, B, C, D, E, F, H, L;       
+    uint16_t PC = 0x00, STACK_P = 0;    
+    int clock_cycles;
     bool IME = false;
     bool IME_Pending = false;
     bool halted = false;
@@ -72,21 +71,25 @@ public:
 };
 Memory memory;
 bool is_interrupt_pending() {
-    uint8_t IE = memory.read(0xFFFF);  // Interrupt Enable
-    uint8_t IF = memory.read(0xFF0F);  // Interrupt Flags
-    return (IE & IF & 0x1F) != 0;       // Return true if any interrupt is pending
+    uint8_t IE = memory.read(0xFFFF);  
+    uint8_t IF = memory.read(0xFF0F);  
+    return (IE & IF & 0x1F) != 0;       
 }
-uint8_t rom_data[769];
+
+std::vector<uint8_t> rom_data;
+uint16_t rom_size = 0;
+
 void generate_rom_data() {
-    int index = 0;
+    rom_data.clear();
     for (int i = 0x00; i <= 0xff; i++) {
-        rom_data[index++] =  i ;
-        rom_data[index++] = 0xcb;
-        rom_data[index++] = i;
+        rom_data.push_back(i);
+        rom_data.push_back( 0xcb);
+        rom_data.push_back( i);
     }
-    rom_data[index++] = 0x76;
+    rom_data.push_back (0x76);
+    rom_size = rom_data.size();
 }
-    uint16_t rom_size = sizeof(rom_data) / sizeof(rom_data[0]);
+   
 void load_rom() {
     for (uint16_t i = 0; i < rom_size && i< 0x8000 ; i++) {
         memory.write(i, rom_data[i]);
@@ -163,12 +166,13 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
 
             memory.write(addr, result);
 
-            // Set flags
+            
             cpu.F = 0;
-            if (result == 0) cpu.F |= 0x80;  // Z
-            if (bit7)         cpu.F |= 0x10; // C
+            if (result == 0) cpu.F |= 0x80;  
+            if (bit7)         cpu.F |= 0x10; 
 
             cpu.clock_cycles = 16;
+          
         }
         else {
             val = resolve_register(operand1);
@@ -178,81 +182,125 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
 
             resolve_register(operand1)= result;
 
-            // Set flags
+            
             cpu.F = 0;
-            if (result == 0) cpu.F |= 0x80;  // Z
-            if (bit7)         cpu.F |= 0x10; // C
+            if (result == 0) cpu.F |= 0x80;  
+            if (bit7)         cpu.F |= 0x10; 
 
             cpu.clock_cycles = 8;
+            
         }
     }
+
     if (mnemonic == "INC" && operand1 == "BC") {
         uint16_t x1 = cpu.getBC();
         x1 = x1 + 1;
         cpu.setBC(x1);
+        cpu.clock_cycles = cycles[0];
+       
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), x1);
     }
     else if (mnemonic == "INC" && operand1 == "DE") {
         uint16_t x1 = cpu.getDE();
         x1 = x1 + 1;
         cpu.setDE(x1);
+        cpu.clock_cycles = cycles[0];
+     
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), x1);
     }
-    else if (mnemonic == "INC" && operand1 == "STACK_P") {
+    else if (mnemonic == "INC" && operand1 == "SP") {
         cpu.STACK_P += 1;
+        cpu.clock_cycles = cycles[0];
+        
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), cpu.STACK_P);
     }
     else if (mnemonic == "INC" && operand1 == "(HL)") {
         uint16_t addr = cpu.getHL();
-        uint8_t val = data[addr];
+        uint8_t val = memory.read(addr);
         val += 1;
-        data[addr] = val;
+        memory.write( addr,val);
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s (HL) → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), val, cpu.F);
+    }
+    
+    else if (mnemonic == "INC" && operand1 == "BC") {
+        cpu.setBC(cpu.getBC() + 1);
+        cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
+        printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), cpu.getBC(), cpu.F);
+    }
+    else if (mnemonic == "INC" && operand1 == "HL") {
+        cpu.setHL(cpu.getHL() + 1);
+        cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
+        printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), cpu.getHL(), cpu.F);
+
     }
     else if (mnemonic == "INC") {
         uint8_t& x1 = resolve_register(operand1);
         x1 += 1;
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), x1, cpu.F);
 
     }
-    else if (mnemonic == "INC" && operand1 == "BC") {
-        cpu.setBC(cpu.getBC() + 1);
-    }
-    
     if (mnemonic == "DEC" && operand1 == "BC") {
         uint16_t x1 = cpu.getBC();
         x1 = x1 - 1;
-        cpu.setBC(x1);
+        cpu.setBC(x1);       
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), x1);
     }
     else if (mnemonic == "DEC" && operand1 == "DE") {
         uint16_t x1 = cpu.getDE();
         x1 = x1 - 1;
         cpu.setDE(x1);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), x1);
     }
-    else if (mnemonic == "DEC" && operand1 == "STACK_P") {
+    else if (mnemonic == "DEC" && operand1 == "HL") {
+        uint16_t x1 = cpu.getHL();
+        x1 = x1 - 1;
+        cpu.setHL(x1);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
+        printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), x1);
+    }
+    else if (mnemonic == "DEC" && operand1 == "SP") {
         cpu.STACK_P -= 1;
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%04X\n", mnemonic.c_str(), operand1.c_str(), cpu.STACK_P);
     }
     else if (mnemonic == "DEC" && operand1 == "(HL)") {
         uint16_t addr = cpu.getHL();
-        uint8_t val = data[addr];
+        uint8_t val = memory.read(addr);
         val -= 1;
-        data[addr] = val;
-        cpu.F = getFlagBytes(flags);
+        memory.write(addr, val);
+        cpu.F = getFlagBytes(flags);       
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s (HL) → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), val, cpu.F);
     }
     else if (mnemonic == "DEC") {
         uint8_t& x1 = resolve_register(operand1);
         x1 -= 1;
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), x1, cpu.F);
     }
     if (mnemonic == "NOP") {
         cpu.PC++;
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s  → 0x%04X\n", mnemonic.c_str(), cpu.PC);
     }   
     if (mnemonic == "RRC" && operand1 == "(HL)") {
@@ -262,6 +310,8 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t result = (val >> 1) | (bit0 << 7);
         memory.write(addr, result);
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s (HL) → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), result, cpu.F);
     }
     else if  (mnemonic == "RRC") {
@@ -269,6 +319,8 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t result = (resolve_register(operand1) >> 1) | (bit0 << 7);
         resolve_register(operand1) = result;
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), result, cpu.F);
     }
     if (mnemonic == "RL" && operand1 == "(HL)") {
@@ -278,6 +330,8 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t bit7 = (cpu.getHL() & 0x80) >> 7;
         uint8_t result = (cpu.getHL() << 1) | oldCarry;
         memory.write(addr, result);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), result, cpu.F);
     }
     else if (mnemonic == "RL") {
@@ -286,6 +340,8 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t result = (resolve_register(operand1) << 1) | oldCarry;
         resolve_register(operand1) = result;
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), result, cpu.F);
     }
      if (mnemonic == "RR" && operand1 == "(HL)") {
@@ -295,6 +351,8 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t bit0 = memory.read(cpu.getHL()) & 0x01;
         uint8_t result = (memory.read(cpu.getHL()) >> 1) | (oldCarry << 7);
         memory.write(addr ,result);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), result, cpu.F);
         
     }
@@ -304,48 +362,69 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         uint8_t result = (resolve_register(operand1) >> 1) | (oldCarry << 7);
         resolve_register(operand1) = result;
         cpu.F = getFlagBytes(flags);
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: %s %s → 0x%02X, Flags = 0x%02X\n", mnemonic.c_str(), operand1.c_str(), result, cpu.F);
     }
     if (mnemonic == "JR" && operand1 =="NZ") {
         if (!(cpu.F & 0x80)) {
-            int8_t offset = (int8_t)resolve_value(operand2);
+            int8_t offset = (int8_t)memory.read(cpu.PC+1);
             cpu.PC += 2 + offset;
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else {
             cpu.PC += 2;
+            cpu.clock_cycles = cycles[1];
+            // = length[0];
         }     
     } 
-    if (mnemonic == "JR" && operand1 == "NC") {
+    else if (mnemonic == "JR" && operand1 == "NC") {
         if (!(cpu.F & 0x10)) {
-            int8_t offset = (int8_t)resolve_value(operand2);
+            int8_t offset = (int8_t)memory.read(cpu.PC +1);
             cpu.PC += 2 + offset;
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else {
             cpu.PC += 2;
+            cpu.clock_cycles = cycles[1];
+            // = length[0];
         }
     }
-    if (mnemonic == "JR" && operand1 == "Z") {
+    else if (mnemonic == "JR" && operand1 == "Z" && operand2 =="r8") {
         if (cpu.F & 0x80) {
-            int8_t offset = (int8_t)resolve_value(operand2);
+            int8_t offset = (int8_t)memory.read(cpu.PC +1);
             cpu.PC += 2 + offset;
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else {
             cpu.PC += 2;
+            cpu.clock_cycles = cycles[1];
+            // = length[0];
         }
     }
-    if (mnemonic == "JR" && operand1 == "C") {
+    else if (mnemonic == "JR" && operand1 == "C") {
         if (cpu.F & 0x10) {
-            int8_t offset = (int8_t)resolve_value(operand2);
+            int8_t offset = (int8_t)memory.read(cpu.PC +1);
             cpu.PC += 2 + offset;
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else {
             cpu.PC += 2;
+            cpu.clock_cycles = cycles[1];
+            // = length[0];
         }
     }
-    if (mnemonic == "JR" && operand1 == "r8") {
+    else if (mnemonic == "JR" && operand1 == "r8") {
         int8_t offset = (int8_t)memory.read(cpu.PC+1);
         cpu.PC += 2 + offset;
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
     }
+  
     if (mnemonic == "JP" && operand1 == "NZ") {
             uint8_t lo = memory.read(cpu.PC + 1);
             uint8_t hi = memory.read(cpu.PC + 2);
@@ -354,10 +433,14 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             if (!(cpu.F & 0x80)) {
                 cpu.PC = addr;
                 cpu.clock_cycles = cycles[0];
+               
+                // = length[0];
             }
             else {
                 cpu.PC += 3;
                 cpu.clock_cycles = cycles[1];
+              
+                // = length[0];
             }
     }
     if (mnemonic == "JP" && operand1 == "NC") {
@@ -368,26 +451,36 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         if (!(cpu.F & 0x10)) {
             cpu.PC = addr;
             cpu.clock_cycles = cycles[0];
+           
+            // = length[0];
         }
         else {
             cpu.PC += 3;
             cpu.clock_cycles = cycles[1];
+            
+            // = length[0];
         }
     }
     if (mnemonic == "JP" && operand1 == "U16") {
         uint16_t addr = memory.read(cpu.PC + 1) | (memory.read(cpu.PC + 2) << 8);
         cpu.PC = addr;
         cpu.clock_cycles = cycles[0];
+        
+        // = length[0];
     }
     if (mnemonic == "JP" && operand1 == "Z") {
         if (cpu.F & 0x80){
             uint16_t addr = memory.read(cpu.PC + 1) | (memory.read(cpu.PC + 2) << 8);
             cpu.PC = addr;
             cpu.clock_cycles = cycles[0];
+            
+            // = length[0];
         }
         else {
             cpu.PC += 3;
             cpu.clock_cycles = cycles[1];
+
+            // = length[0];
         }
         
     }
@@ -396,23 +489,27 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             uint16_t addr = memory.read(cpu.PC + 1) | (memory.read(cpu.PC + 2) << 8);
             cpu.PC = addr;
             cpu.clock_cycles = cycles[0];
+           
+            // = length[0];
 
         }
         else {
             cpu.PC += 3;
-            cpu.clock_cycles = cycles[1];
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
 
     }
     if (mnemonic == "JP" && operand1 == "HL") {
         cpu.PC = cpu.getHL();
         cpu.clock_cycles = cycles[0];
+        // = length[0];
     }
     if (mnemonic == "DAA") {
         uint8_t a = cpu.A;
-        bool n = cpu.F & 0x40;  // Subtract flag (N)
-        bool h = cpu.F & 0x20;  // Half-carry flag (H)
-        bool c = cpu.F & 0x10;  // Carry flag (C)
+        bool n = cpu.F & 0x40;  
+        bool h = cpu.F & 0x20;  
+        bool c = cpu.F & 0x10;  
 
         uint8_t correction = 0;
 
@@ -421,24 +518,30 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             if (c || a > 0x99) {
                 correction += 0x60;
                 cpu.F |= 0x10; // Set Carry flag
+                cpu.clock_cycles = cycles[0];
+                // = length[0];
             }
         }
         else {  // After subtraction
             if (h) correction |= 0x06;
             if (c) correction |= 0x60;
             a -= correction;
+            cpu.clock_cycles = cycles[0];
+            // = length[0];
+
         }
 
         if (!n) a += correction;
 
-        // Set or clear flags
+       
         cpu.F &= 0x40;               // Keep only N flag, clear Z, H, C temporarily
         if (a == 0) cpu.F |= 0x80;   // Set Z if result is zero
         if (correction & 0x60) cpu.F |= 0x10; // Set C if high nibble corrected
         cpu.F &= ~0x20;              // Always clear H after DAA
 
         cpu.A = a;
-        cpu.clock_cycles = cycles[0];      // DAA takes 4 cycles
+        cpu.clock_cycles = cycles[0];
+        // = length[0];
     }
     if (mnemonic == "SCF") {
         cpu.F = getFlagBytes(flags);
@@ -452,24 +555,28 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
          printf("Executed ADD A (HL) : 0x%02X\n", cpu.A);
          cpu.F = getFlagBytes(flags);
          cpu.clock_cycles = cycles[0];
+         // = length[0];
         }
         else if (operand2 == "A") {
             uint16_t x1 = cpu.A + cpu.A;
             cpu.A = x1 & 0xff;
             cpu.F = getFlagBytes(flags);
             cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else if (operand2 == "B") {
             uint16_t x1 = cpu.A + resolve_register(operand2);
             cpu.A = x1 & 0xff;
             cpu.F = getFlagBytes(flags);
             cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else if (operand2 == "C") {
             uint16_t x1 = cpu.A + resolve_register(operand2);
             cpu.A = x1 & 0xff;
             cpu.F = getFlagBytes(flags);
             cpu.clock_cycles = cycles[0];
+            // = length[0];
         }
         else if (operand2 == "D") {
             uint16_t x1 = cpu.A + resolve_register(operand2);
@@ -523,7 +630,7 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
 
             cpu.setHL(result & 0xFFFF);
 
-            // Set flags properly
+           
             
             cpu.F = getFlagBytes(flags);
             cpu.clock_cycles = cycles[0];
@@ -739,8 +846,7 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             cpu.clock_cycles = cycles[0];
         }
     }
-    // Missing Game Boy CPU Opcode Logic Implementation
-// Add this to your execute_instruction() function
+   
 
 // ---------------- ADC (Add with Carry) ----------------
     if (mnemonic == "ADC") {
@@ -955,7 +1061,6 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             uint16_t ret = memory.read(cpu.STACK_P) | (memory.read(cpu.STACK_P + 1) << 8);
             cpu.STACK_P += 2;
             cpu.PC = ret;
-            // IME = 1; // Enable interrupts (in full implementation)
             cpu.clock_cycles = cycles[0];
             printf("Executed: RETI\n");
     }
@@ -1162,7 +1267,7 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         cpu.A = (memory.read(addr + 1) & 0xff);
         cpu.clock_cycles = cycles[0];
     }
-    else if (mnemonic == "LD" && operand2 == "A" && operand2 == "(HL-)") {
+    else if (mnemonic == "LD" && operand1 == "A" && operand2 == "(HL-)") {
         uint16_t addr = cpu.getBC();
         cpu.A = (memory.read(addr - 1) & 0xff);
         cpu.clock_cycles = cycles[0];
@@ -1178,68 +1283,171 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
     
 
     // ---------------- BIT x, r ----------------
-    else if (mnemonic == "BIT") {
-        uint8_t bit = std::stoi(operand1);
-        uint8_t val = resolve_value(operand2);
-        cpu.setFlagZ(!(val & (1 << bit)));
-        cpu.setFlagN(false);
-        cpu.setFlagH(true);
-        cpu.clock_cycles = cycles[0];
-        printf("Executed: BIT %d, %s\n", bit, operand2.c_str());
+     if (mnemonic == "BIT") {
+        if (operand2 == "(HL)") {
+            uint16_t addr = cpu.getHL();
+            uint8_t val = memory.read(addr);
+
+            int bit_index = std::stoi(operand1);  
+
+            
+            bool bit_set = val & (1 << bit_index);
+
+            cpu.F &= 0x10;               // Preserve only Carry flag
+            cpu.F |= 0x20;               // Set H
+            if (!bit_set) cpu.F |= 0x80; // Set Z if bit not set
+
+            cpu.clock_cycles = 12;
+
         }
+        else {
+            uint8_t bit = std::stoi(operand1);
+            uint8_t val = resolve_value(operand2);
+            cpu.setFlagZ(!(val & (1 << bit)));
+            cpu.setFlagN(false);
+            cpu.setFlagH(true);
+            cpu.clock_cycles = cycles[0];
+            printf("Executed: BIT %d, %s\n", bit, operand2.c_str());
+        }
+    }
 
         // ---------------- RES x, r ----------------
-    else if (mnemonic == "RES") {
+     if (mnemonic == "RES") {
+        if (operand2 == "(HL)") {
+            uint16_t addr = cpu.getHL();
+            uint8_t val = memory.read(addr);
+
+            int bit_index = std::stoi(operand1); // "0" to "7"
+
+            val &= ~(1 << bit_index); // Clear the bit
+
+            memory.write(addr, val);
+
+            cpu.clock_cycles = 16;
+        }
+        else {
             uint8_t bit = std::stoi(operand1);
             uint8_t& reg = resolve_register(operand2);
             reg &= ~(1 << bit);
             cpu.clock_cycles = cycles[0];
             printf("Executed: RES %d, %s -> 0x%02X\n", bit, operand2.c_str(), reg);
-            }
+        }
+    }
 
             // ---------------- SET x, r ----------------
-    else if (mnemonic == "SET") {
-                uint8_t bit = std::stoi(operand1);
-                uint8_t& reg = resolve_register(operand2);
-                reg |= (1 << bit);
-                cpu.clock_cycles = cycles[0];
-                printf("Executed: SET %d, %s -> 0x%02X\n", bit, operand2.c_str(), reg);
+    if (mnemonic == "SET") {
+        if (operand2 == "(HL)") {
+            uint16_t addr = cpu.getHL();
+            uint8_t val = memory.read(addr);
+
+            int bit_index = std::stoi(operand1); 
+
+            val |= (1 << bit_index); // set bit x
+
+            memory.write(addr, val);
+
+            cpu.clock_cycles = 16;
+        }
+        else {
+            uint8_t bit = std::stoi(operand1);
+            uint8_t& reg = resolve_register(operand2);
+            reg |= (1 << bit);
+            cpu.clock_cycles = cycles[0];
+            printf("Executed: SET %d, %s -> 0x%02X\n", bit, operand2.c_str(), reg);
+        }
     }
     // ---------------- SWAP r ----------------
-    else if (mnemonic == "SWAP") {
-        uint8_t& reg = resolve_register(operand1);
-        reg = ((reg & 0xF) << 4) | ((reg & 0xF0) >> 4);
-        cpu.setFlagZ(reg == 0);
-        cpu.setFlagN(false);
-        cpu.setFlagH(false);
-        cpu.setFlagC(false);
-        cpu.clock_cycles = cycles[0];
-        printf("Executed: SWAP %s -> 0x%02X\n", operand1.c_str(), reg);
-        }
+    if (mnemonic == "SWAP") {
+        if (operand1 == "(HL)") {
+            uint16_t addr = cpu.getHL();
+            uint8_t val = memory.read(addr);
 
-        // ---------------- SLA r ----------------
-    else if (mnemonic == "SLA") {
+            uint8_t result = ((val & 0xF0) >> 4) | ((val & 0x0F) << 4);
+            memory.write(addr, result);
+
+   
+            cpu.F = 0;
+            if (result == 0) cpu.F |= 0x80;  // Z
+
+            cpu.clock_cycles = 16;
+
+        }
+        else {
             uint8_t& reg = resolve_register(operand1);
-            cpu.setFlagC((reg & 0x80) != 0);
-            reg <<= 1;
+            reg = ((reg & 0xF) << 4) | ((reg & 0xF0) >> 4);
             cpu.setFlagZ(reg == 0);
             cpu.setFlagN(false);
             cpu.setFlagH(false);
+            cpu.setFlagC(false);
             cpu.clock_cycles = cycles[0];
-            printf("Executed: SLA %s -> 0x%02X\n", operand1.c_str(), reg);
+            printf("Executed: SWAP %s -> 0x%02X\n", operand1.c_str(), reg);
+        }
+    }
+
+        // ---------------- SLA r ----------------
+     if (mnemonic == "SLA") {
+
+            if (operand1 == "(HL)") {
+                uint16_t addr = cpu.getHL();
+                uint8_t val = memory.read(addr);
+
+                uint8_t bit7 = (val & 0x80) >> 7;
+                uint8_t result = (val << 1) & 0xFF;
+
+                memory.write(addr, result);
+
+                // Set flags
+                cpu.F = 0;
+                if (result == 0) cpu.F |= 0x80;  // Z
+                if (bit7)         cpu.F |= 0x10; // C
+
+                cpu.clock_cycles = 16;
             }
 
-            // ---------------- SRA r ----------------
-    else if (mnemonic == "SRA") {
+            else {
                 uint8_t& reg = resolve_register(operand1);
-                cpu.setFlagC(reg & 0x01);
-                reg = (reg >> 1) | (reg & 0x80);
+                cpu.setFlagC((reg & 0x80) != 0);
+                reg <<= 1;
                 cpu.setFlagZ(reg == 0);
                 cpu.setFlagN(false);
                 cpu.setFlagH(false);
                 cpu.clock_cycles = cycles[0];
-                printf("Executed: SRA %s -> 0x%02X\n", operand1.c_str(), reg);
+                printf("Executed: SLA %s -> 0x%02X\n", operand1.c_str(), reg);
+            }
     }
+       
+
+            // ---------------- SRA r ----------------
+     if (mnemonic == "SRA") {
+                if (operand1 == "(HL)") {
+                    uint16_t addr = cpu.getHL();
+                    uint8_t val = memory.read(addr);
+
+                    uint8_t bit0 = val & 0x01;
+                    uint8_t bit7 = val & 0x80; 
+
+                    uint8_t result = (val >> 1) | bit7; 
+
+                    memory.write(addr, result);
+
+                    // Set flags
+                    cpu.F = 0;
+                    if (result == 0) cpu.F |= 0x80;  // Z
+                    if (bit0)        cpu.F |= 0x10;  // C
+
+                    cpu.clock_cycles = 16;
+                }
+                else {
+                    uint8_t& reg = resolve_register(operand1);
+                    cpu.setFlagC(reg & 0x01);
+                    reg = (reg >> 1) | (reg & 0x80);
+                    cpu.setFlagZ(reg == 0);
+                    cpu.setFlagN(false);
+                    cpu.setFlagH(false);
+                    cpu.clock_cycles = cycles[0];
+                    printf("Executed: SRA %s -> 0x%02X\n", operand1.c_str(), reg);
+                }
+     }
     // ---------------- SBC (Subtract with Carry) ----------------
     else if (mnemonic == "SBC") {
         uint8_t value = resolve_value(operand2);
@@ -1251,6 +1459,7 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         cpu.setFlagC(cpu.A < (value + carry));
         cpu.A = result & 0xFF;
         cpu.clock_cycles = cycles[0];
+        // = length[0];
         printf("Executed: SBC A, %s -> 0x%02X\n", operand2.c_str(), cpu.A);
         }
 
@@ -1390,8 +1599,9 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
             }
             if (!flags.empty())
                 cpu.F = getFlagBytes(flags);
+            int inst_length = length[1];
             execute_instruction(mnemonic, operand1, operand2,flags,cycles);
-
+            return inst_length;
           
         }
         else {
@@ -1417,12 +1627,12 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
 
         for (int i = 0; i < 5; i++) {
             if (pending & (1 << i)) {
-                // Push PC to stack manually
+                
                 cpu.STACK_P -= 2;
                 memory.write(cpu.STACK_P, cpu.PC & 0xFF);         // Low byte
                 memory.write(cpu.STACK_P + 1, (cpu.PC >> 8));     // High byte
 
-                // Clear corresponding IF bit
+                
                 memory.write(0xFF0F, IF & ~(1 << i));
 
                 // Jump to interrupt vector
@@ -1475,23 +1685,23 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
     }
     void step() {
         uint8_t opcode = memory.read(cpu.PC);
-        handle_instruction_metadata(opcode);  // Your main dispatch logic
+        handle_instruction_metadata(opcode);  
 
         // Log registers and state
         printf("PC: %04X  A: %02X  F: %02X  B: %02X  C: %02X  D: %02X  E: %02X  H: %02X  L: %02X  SP: %04X  Opcode: %02X\n",
             cpu.PC, cpu.A, cpu.F, cpu.B, cpu.C, cpu.D, cpu.E, cpu.H, cpu.L, cpu.STACK_P, opcode);
     }
-    //void load_rom(const std::string& path) {
-      //  std::ifstream rom(path, std::ios::binary);
-       // if (!rom.is_open()) {
-         //   printf("Failed to open ROM\n");
-           // exit(1);
-        //}
-        //std::vector<uint8_t> rom_data((std::istreambuf_iterator<char>(rom)), {});
-        //for (size_t i = 0; i < rom_data.size() && i < 0x8000; i++) {
-          //  memory.write(i, rom_data[i]);
-        //}
-    //}
+    void load_rom(const std::string& path) {
+        std::ifstream rom(path, std::ios::binary);
+        if (!rom.is_open()) {
+            printf("Failed to open ROM\n");
+            exit(1);
+        }
+        std::vector<uint8_t> rom_data((std::istreambuf_iterator<char>(rom)), {});
+        for (size_t i = 0; i < rom_data.size() && i < 0x8000; i++) {
+           memory.write(i, rom_data[i]);
+       }
+    }
 
 
     // ========================== MAIN ============================
@@ -1508,39 +1718,56 @@ void execute_instruction(const std::string& mnemonic, const std::string& operand
         generate_rom_data();
         load_rom();
         cpu.PC = 0x00;
-        for (uint8_t i = 0; i < 0xff; i++) {
-            
+
+       
+        while (true) {
             uint8_t opcode = memory.read(cpu.PC);
-            printf("\nFetching opcode at PC+%d: 0x%02X\n", i, opcode);
             
-            int instr_len = handle_instruction_metadata(opcode); 
-            if (!(cpu.PC == instr_len)) {
-                cpu.PC =+ instr_len;
-            }
-            cpu.PC += i;
-            printf("PC after execution: 0x%02X\n", cpu.PC);
-            for (int i = 0; i < 5000; ++i) {
-                //step();
-            }
+            printf("\nFetching opcode at PC=0x%04X: 0x%02X\n", cpu.PC, opcode);
+
+           int inst_length = handle_instruction_metadata(opcode); 
            
-            if (opcode == 0xCB ) {
-                cpu.PC++;
+            
+            if (opcode == 0xCB) {
+                
+                 inst_length = 2;
             }
+            if (!cpu.PC == inst_length) {
+                cpu.PC += inst_length;
+            }
+
+            
+            cpu.PC += inst_length;
+
+            printf("PC after execution: 0x%04X\n", cpu.PC);
+
+            // Handle IME delayed enabling
             if (cpu.IME_Pending) {
                 cpu.IME = true;
                 cpu.IME_Pending = false;
             }
+
+            // Handle halt mode
             if (cpu.halted) {
                 if (is_interrupt_pending()) {
-                    cpu.halted = false;  
+                    cpu.halted = false;
+                }
+                else {
+                    // HALT skips executing instructions, but clocks may still run
+                    continue;
                 }
             }
-            service_interrupts();
-            //for (int i = 0; i < 5000; ++i) {
-                //step();
-            //}
-            //cpu.PC++;
-        }
 
+            // Service interrupts if any
+            service_interrupts();
+
+            // Add break condition to prevent infinite loop (optional)
+            if (opcode == 0x76) { // HALT
+                printf("CPU halted. Exiting loop.\n");
+                break;
+            }
+            if (cpu.PC >= 0x8000)
+                break;
+        }
         return 0;
     }
