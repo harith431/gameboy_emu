@@ -3796,7 +3796,7 @@
       ],
       "addr": "0xe9",
       "group": "control/br",
-      "operand1": "(HL)"
+      "operand1": "HL"
     },
     "0xea": {
       "mnemonic": "LD",
