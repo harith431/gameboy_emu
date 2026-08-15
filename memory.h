@@ -28,11 +28,20 @@ public:
     uint8_t (*cart_ram_read_cb)(uint16_t) = nullptr;
     void (*cart_ram_write_cb)(uint16_t, uint8_t) = nullptr;
 
+    // Returns the PPU's current internal mode (0-3), used for bus blocking:
+    // VRAM is inaccessible during mode 3, OAM during modes 2 and 3.
+    int (*ppu_mode_cb)() = nullptr;
+
     Memory() { data.resize(0x10000); }
 
     uint8_t read(uint16_t addr) {
         if (addr < 0x8000 && cart_read_cb) return cart_read_cb(addr);       // ROM
         if (addr >= 0xA000 && addr <= 0xBFFF && cart_ram_read_cb) return cart_ram_read_cb(addr); // cartridge RAM
+        if (ppu_mode_cb) {
+            int m = ppu_mode_cb();
+            if (addr >= 0x8000 && addr <= 0x9FFF && m == 3) return 0xFF;   // VRAM: mode 3
+            if (addr >= 0xFE00 && addr <= 0xFE9F && (m == 2 || m == 3)) return 0xFF; // OAM: modes 2/3
+        }
         if (addr == 0xFF00) return read_joypad();
         if (addr == 0xFF05 && tima_read_cb) return tima_read_cb();   // TIMA reads 0 while reloading
         if (addr == 0xFF0F) return data[addr] | 0xE0;                 // IF: bits 5-7 read 1
@@ -58,6 +67,13 @@ public:
         if (addr >= 0xA000 && addr <= 0xBFFF) {
             if (cart_ram_write_cb) cart_ram_write_cb(addr, value);
             return;
+        }
+
+        // Bus blocking on writes: VRAM during mode 3, OAM during modes 2/3.
+        if (ppu_mode_cb) {
+            int m = ppu_mode_cb();
+            if (addr >= 0x8000 && addr <= 0x9FFF && m == 3) return;
+            if (addr >= 0xFE00 && addr <= 0xFE9F && (m == 2 || m == 3)) return;
         }
 
         switch (addr) {
