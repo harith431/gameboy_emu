@@ -14,94 +14,120 @@ extern CPU cpu;
 extern Memory memory;
 
 struct PPU {
-    int ppu_clock = 0;
-    int scanline = 0;
-    int mode = 0;
+    int ppu_clock = 0;   // dot within the current scanline (0-455)
+    int scanline = 0;    // LY
+    int mode = 2;        // 0=HBlank 1=VBlank 2=OAM scan 3=transfer
     int frames = 0;
     bool frame_ready = false;
-    bool vblank_triggered = false;
     bool lcd_enabled = false;
 
-    void update_registers_from_memory() {
-        uint8_t stat = memory.read(0xFF41);
-        stat = (stat & 0xFC) | (mode & 0x03);
-
-        uint8_t ly = memory.read(0xFF44);
-        uint8_t lyc = memory.read(0xFF45);
-
-        if (ly == lyc) {
-            stat |= 0x04;
-            if (stat & 0x40) {
-                memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);
-            }
-        } else {
-            stat &= ~0x04;
+    // Set IF's STAT interrupt bit (bit 1) if the given STAT enable bit is set.
+    void fire_stat_interrupt(uint8_t enable_bit) {
+        if (memory.data[0xFF41] & enable_bit) {
+            memory.data[0xFF0F] = (memory.data[0xFF0F] & 0x1F) | 0x02;
         }
-
-        switch (mode) {
-        case 0: if (stat & 0x08) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
-        case 1: if (stat & 0x10) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
-        case 2: if (stat & 0x20) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
-        }
-
-        // Write STAT directly: game writes are masked in Memory::write(), but
-        // the PPU owns the mode/coincidence bits.
-        memory.data[0xFF41] = stat;
     }
 
+    // Switch to a new mode, update the STAT mode bits, and fire the matching
+    // STAT interrupt (bits 3/4/5) if enabled. Called on mode *transitions*.
+    void set_mode(int new_mode) {
+        if (new_mode == mode) return;
+        mode = new_mode;
+        uint8_t stat = memory.data[0xFF41];
+        stat = (stat & 0xFC) | (mode & 0x03);
+        memory.data[0xFF41] = stat;
+
+        switch (mode) {
+        case 0: fire_stat_interrupt(0x08); break; // mode-0 interrupt (bit 3)
+        case 1: fire_stat_interrupt(0x10); break; // mode-1 interrupt (bit 4)
+        case 2: fire_stat_interrupt(0x20); break; // mode-2 interrupt (bit 5)
+        default: break;
+        }
+    }
+
+    // Update the STAT LYC=LY coincidence bit and fire the LYC interrupt
+    // (bit 6) only on the rising edge (coincidence 0 -> 1).
+    void update_lyc() {
+        uint8_t ly = memory.data[0xFF44];
+        uint8_t lyc = memory.data[0xFF45];
+        uint8_t stat = memory.data[0xFF41];
+        bool was_coincident = (stat & 0x04) != 0;
+        bool coincident = (ly == lyc);
+        if (coincident) stat |= 0x04; else stat &= ~0x04;
+        memory.data[0xFF41] = stat;
+        if (coincident && !was_coincident) fire_stat_interrupt(0x40);
+    }
+
+    // The game wrote LYC: update the coincidence bit/interrupt (only while
+    // the LCD is on; with LCD off the comparison clock is stopped).
+    void write_lyc(uint8_t value) {
+        memory.data[0xFF45] = value;
+        if (lcd_enabled) update_lyc();
+    }
+
+    // Advance the PPU by `cycles` T-cycles (4.194304 MHz dots).
     void step(int cycles) {
-        lcd_enabled = (memory.read(0xFF40) & 0x80) != 0;
-
-        if (!lcd_enabled) {
-            memory.data[0xFF44] = 0x00;
-            ppu_clock = 0;
-            scanline = 0;
-            return;
-        }
-        ppu_clock += cycles;
-
-        if (scanline < 144) {
-            if (ppu_clock < 80)
-                mode = 2; // OAM Scan
-            else if (ppu_clock < 252)
-                mode = 3; // Transfer
-            else
-                mode = 0; // HBlank
-        } else {
-            mode = 1; // VBlank
-        }
-
-        update_registers_from_memory();
-
-        if (ppu_clock >= 456) {
-            ppu_clock -= 456;
-
-            memory.data[0xFF44] = static_cast<uint8_t>(scanline);
-
-            if (scanline < 144) {
-                render_scanline();
-                render_window();
-                render_sprites();
-            }
-
-            if (!vblank_triggered && scanline == 144) {
-                uint8_t iflag = memory.read(0xFF0F);
-                iflag |= 0x01;
-                memory.write(0xFF0F, iflag);
-                vblank_triggered = true;
-            }
-
-            if (scanline == 144) {
-                frame_ready = true;
-                if (!g_headless) render_frame(framebuffer);
-            }
-
-            scanline++;
-
-            if (scanline > 153) {
+        bool lcd_on = (memory.read(0xFF40) & 0x80) != 0;
+        if (lcd_on != lcd_enabled) {
+            lcd_enabled = lcd_on;
+            if (!lcd_on) {
+                // LCD off: mode 0, LY reset to 0. The LYC=LY coincidence bit
+                // is frozen (the comparison clock stops).
+                if (mode != 0) set_mode(0);
+                ppu_clock = 0;
                 scanline = 0;
-                vblank_triggered = false;
-                frames++;
+                memory.data[0xFF44] = 0x00;
+            } else {
+                // LCD on: LY starts at 0 and line 0 begins in mode 0
+                // (DMG quirk: no mode 2 on the first line).
+                ppu_clock = 0;
+                scanline = 0;
+                memory.data[0xFF44] = 0x00;
+                update_lyc();
+                mode = 0;
+                uint8_t stat = memory.data[0xFF41];
+                stat = (stat & 0xFC) | 0x00;
+                memory.data[0xFF41] = stat;
+            }
+        }
+
+        if (!lcd_enabled) return;
+
+        while (cycles-- > 0) {
+            ppu_clock++;
+            if (ppu_clock >= 456) {
+                ppu_clock = 0;
+
+                // Render the scanline that just finished.
+                if (scanline < 144) {
+                    render_scanline();
+                    render_window();
+                    render_sprites();
+                }
+
+                scanline++;
+                if (scanline > 153) {
+                    scanline = 0;
+                    frames++;
+                }
+                memory.data[0xFF44] = static_cast<uint8_t>(scanline);
+                update_lyc();
+
+                if (scanline == 144) {
+                    // Enter VBlank: VBlank interrupt + STAT mode-1 interrupt.
+                    // On DMG the mode-2 interrupt also fires here (if enabled).
+                    memory.data[0xFF0F] = (memory.data[0xFF0F] & 0x1F) | 0x01;
+                    set_mode(1);
+                    fire_stat_interrupt(0x20);
+                    frame_ready = true;
+                    if (!g_headless) render_frame(framebuffer);
+                } else if (scanline < 144) {
+                    set_mode(2); // visible scanline starts in OAM-scan mode
+                }
+                // scanlines 145-153 remain in mode 1
+            } else if (scanline < 144) {
+                if (ppu_clock == 80) set_mode(3);   // OAM scan -> transfer
+                else if (ppu_clock == 252) set_mode(0); // transfer -> HBlank
             }
         }
     }

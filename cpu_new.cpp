@@ -11,7 +11,12 @@ int CPU::step() {
         cycles += 4;
         return 4;
     }
-    
+
+    // Reset the per-instruction T-cycle tracking. Each memory access inside
+    // this instruction will advance the timer/PPU to its exact cycle.
+    instr_cycle = 0;
+    synced_cycle = 0;
+
     // HALT bug: the instruction following HALT is fetched twice (PC is not
     // incremented for the first fetch).
     bool no_increment = halt_bug;
@@ -593,22 +598,27 @@ static int execCB() {
 
 void CPU::handleInterrupts() {
     if (!IME) return;
-    
-    uint8_t ie = read8(0xFFFF);
-    uint8_t iff = read8(0xFF0F);
+
+    // Interrupt check: reading IE/IF is internal to the CPU, so it does not
+    // advance the bus. Use direct memory access (not read8/write8).
+    uint8_t ie = memory.read(0xFFFF);
+    uint8_t iff = memory.read(0xFF0F);
     uint8_t pending = ie & iff & 0x1F;
     if (!pending) return;
-    
+
     IME = false;
     halted = false;
-    
+
     // Find highest priority interrupt
     for (int i = 0; i < 5; i++) {
         if (pending & (1 << i)) {
-            write8(0xFF0F, iff & ~(1 << i));
-            push16(PC);
+            memory.write(0xFF0F, iff & ~(1 << i));
+            memory.write(--SP, PC >> 8);
+            memory.write(--SP, PC & 0xFF);
             const uint16_t vectors[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
             PC = vectors[i];
+            // Interrupt dispatch takes 5 M-cycles (20 T-cycles).
+            tick_components(20);
             cycles += 20;
             return;
         }

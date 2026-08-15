@@ -2,7 +2,14 @@
 #include <cstdint>
 #include "memory.h"
 
+// Advance the timer and PPU by `n` T-cycles. Defined in main_new.cpp.
+void tick_components(int n);
+
 struct CPU {
+    // T-cycle position within the currently-executing instruction. Used to
+    // interleave memory accesses with the PPU/timer (see read8/write8).
+    int instr_cycle = 0;   // T-cycles elapsed so far in this instruction
+    int synced_cycle = 0;  // T-cycles already pushed to the timer/PPU
     // 8-bit registers
     uint8_t A = 0x01, B = 0x00, C = 0x13, D = 0x00, E = 0xD8;
     uint8_t F = 0xB0, H = 0x01, L = 0x4D;
@@ -36,8 +43,26 @@ struct CPU {
     void setH(bool v)  { F = v ? (F | 0x20) : (F & ~0x20); }
     void setC(bool v)  { F = v ? (F | 0x10) : (F & ~0x10); }
     
-    uint8_t read8(uint16_t addr) { return memory.read(addr); }
-    void write8(uint16_t addr, uint8_t v) { memory.write(addr, v); }
+    // Advance the timer/PPU up to the current point in the instruction so
+    // that the upcoming access happens at the right T-cycle.
+    void sync_bus() {
+        if (instr_cycle > synced_cycle) {
+            tick_components(instr_cycle - synced_cycle);
+            synced_cycle = instr_cycle;
+        }
+    }
+
+    uint8_t read8(uint16_t addr) {
+        sync_bus();
+        uint8_t v = memory.read(addr);
+        instr_cycle += 4;
+        return v;
+    }
+    void write8(uint16_t addr, uint8_t v) {
+        sync_bus();
+        memory.write(addr, v);
+        instr_cycle += 4;
+    }
     uint16_t read16(uint16_t addr) { return read8(addr) | (read8(addr+1) << 8); }
     void write16(uint16_t addr, uint16_t v) { write8(addr, v & 0xFF); write8(addr+1, v >> 8); }
     

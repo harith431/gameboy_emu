@@ -19,6 +19,7 @@ public:
     void (*tima_write_cb)(uint8_t) = nullptr;
     void (*tma_write_cb)(uint8_t) = nullptr;
     void (*tac_write_cb)(uint8_t) = nullptr;
+    void (*lyc_write_cb)(uint8_t) = nullptr;
 
     // Cartridge (MBC) hooks: ROM window and external RAM.
     uint8_t (*cart_read_cb)(uint16_t) = nullptr;
@@ -86,6 +87,11 @@ public:
 
         case 0xFF07: // TAC
             if (tac_write_cb) tac_write_cb(value);
+            return;
+
+        case 0xFF45: // LYC: may update the STAT coincidence bit + interrupt
+            if (lyc_write_cb) lyc_write_cb(value);
+            else data[addr] = value;
             return;
 
         case 0xFF0F: // IF: only bits 0-4 writable, bits 5-7 read 1

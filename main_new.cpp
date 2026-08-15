@@ -19,6 +19,14 @@ Cartridge cartridge;
 uint8_t framebuffer[144][160];
 bool g_headless = false;
 
+// Advance the timer and PPU together by n T-cycles. Called by the CPU's
+// per-access sync (see cpu_new.h) and by the main loop.
+void tick_components(int n) {
+    if (n <= 0) return;
+    timer.step(n);
+    ppu.step(n);
+}
+
 static void init_fake_bios() {
     cpu.A = 0x01; cpu.F = 0xB0;
     cpu.B = 0x00; cpu.C = 0x13;
@@ -192,6 +200,7 @@ int main(int argc, char** argv) {
     memory.tima_write_cb = [](uint8_t v) { timer.write_tima(v); };
     memory.tma_write_cb  = [](uint8_t v) { timer.write_tma(v); };
     memory.tac_write_cb  = [](uint8_t v) { timer.write_tac(v); };
+    memory.lyc_write_cb  = [](uint8_t v) { ppu.write_lyc(v); };
 
     // Cartridge (MBC) callbacks.
     memory.cart_read_cb     = [](uint16_t a) { return cartridge.read(a); };
@@ -239,8 +248,7 @@ int main(int argc, char** argv) {
                     cpu.halt_bug = true;     // HALT bug: re-execute next instruction
                 }
             } else {
-                timer.step(4);
-                ppu.step(4);
+                tick_components(4);
                 total_cycles += 4;
                 continue;
             }
@@ -250,8 +258,9 @@ int main(int argc, char** argv) {
         cpu.handleInterrupts();
 
         int cyc = cpu.step();
-        timer.step(cyc);
-        ppu.step(cyc);
+        // Advance any instruction cycles not already covered by the CPU's
+        // per-access bus sync (internal ALU cycles, etc.).
+        tick_components(cyc - cpu.synced_cycle);
         total_cycles += cyc;
         cpu.cycles = 0;
 
