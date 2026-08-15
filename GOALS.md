@@ -45,12 +45,18 @@ Passing (50/50 in `run_tests.sh`):
 | CPU (all opcodes incl. CB, flags, interrupts) | ✅ blargg `cpu_instrs` + `instr_timing` pass |
 | Timer (cycle-accurate, reload delay, DIV/TAC glitches) | ✅ 10/10 mooneye timer tests |
 | MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) | ✅ mooneye MBC tests |
-| PPU (background / window / sprites) | ⚠️ scanline-based, NOT cycle-accurate |
+| PPU (background / window / sprites) | ⚠️ per-T-cycle mode timing + CPU interleave; 6/12 mooneye PPU tests |
 | APU | ❌ not implemented |
 | Serial | ⚠️ output-only (enough for test ROMs) |
 
-Known failing / unverified: `mem_timing`, `halt_bug`, `oam_bug`, `dmg_sound`,
-all mooneye PPU/interrupt/OAM-DMA/serial acceptance tests, `dmg-acid2`.
+PPU tests passing: `intr_1_2_timing`, `intr_2_0_timing`, `intr_2_mode0_timing`,
+`intr_2_mode3_timing`, `stat_lyc_onoff`, `vblank_stat_intr`.
+
+PPU tests still failing (need variable mode-3 length, STAT IRQ blocking, and the
+LCD-on 2-cycle offset): `intr_2_mode0_timing_sprites`, `intr_2_oam_ok_timing`,
+`hblank_ly_scx_timing`, `lcdon_timing`, `lcdon_write_timing`, `stat_irq_blocking`.
+Also still failing/unverified: `mem_timing`, `halt_bug`, `oam_bug`, `dmg_sound`,
+`dmg-acid2`, and the mooneye OAM-DMA / serial / boot acceptance tests.
 
 ---
 
@@ -59,17 +65,16 @@ all mooneye PPU/interrupt/OAM-DMA/serial acceptance tests, `dmg-acid2`.
 ### M1 — Core correctness (DONE ✅)
 CPU + timer + MBC. Deliverable: `run_tests.sh` shows 50/50 pass.
 
-### M2 — Cycle-accurate PPU (the big one)
-Rewrite the PPU so it advances in **T-cycles interleaved with the CPU** instead
-of rendering whole scanlines at once.
+### M2 — Cycle-accurate PPU (in progress)
+The PPU now advances per T-cycle, interleaved with the CPU via per-access bus
+sync. Remaining work:
 
-Deliverables / acceptance:
-- [ ] Proper mode timing: mode 2 (OAM scan, 80 cycles) → mode 3 (transfer) →
-      mode 0 (HBlank) → mode 1 (VBlank), 456 cycles/scanline, 154 scanlines
-- [ ] STAT interrupts fire on mode transitions and LYC=LY coincidence, at the
-      correct cycle (including the mode-2/edge cases)
-- [ ] LY/LYC, STAT, LCDC-disable behavior, window-internal-line counter
-- [ ] Sprite fetch timing and the 10-sprite / OAM-BUG behaviors
+- [x] Per-T-cycle mode timing: mode 2 (80) → 3 → 0 → 1, 456 dots/scanline
+- [x] STAT interrupts on mode transitions + LYC=LY coincidence (edge-triggered)
+- [x] LYC write semantics, LCD on/off transitions, VBlank + line-144 mode-2 int
+- [ ] Variable mode-3 length (sprite count + SCX alignment)
+- [ ] STAT IRQ blocking (level-sensitive internal interrupt line)
+- [ ] LCD-on 2-cycle offset quirk
 - [ ] OAM DMA timing (blocks CPU/bus for 160 cycles)
 - [ ] Result: blargg `mem_timing`, `halt_bug`, `oam_bug` pass; mooneye
       `acceptance/ppu/*`, `acceptance/oam_dma/*` pass
