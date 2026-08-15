@@ -201,6 +201,7 @@ int main(int argc, char** argv) {
     memory.tma_write_cb  = [](uint8_t v) { timer.write_tma(v); };
     memory.tac_write_cb  = [](uint8_t v) { timer.write_tac(v); };
     memory.lyc_write_cb  = [](uint8_t v) { ppu.write_lyc(v); };
+    memory.stat_write_cb = [](uint8_t v) { ppu.write_stat(v); };
 
     // Cartridge (MBC) callbacks.
     memory.cart_read_cb     = [](uint16_t a) { return cartridge.read(a); };

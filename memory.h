@@ -20,6 +20,7 @@ public:
     void (*tma_write_cb)(uint8_t) = nullptr;
     void (*tac_write_cb)(uint8_t) = nullptr;
     void (*lyc_write_cb)(uint8_t) = nullptr;
+    void (*stat_write_cb)(uint8_t) = nullptr;
 
     // Cartridge (MBC) hooks: ROM window and external RAM.
     uint8_t (*cart_read_cb)(uint16_t) = nullptr;
@@ -99,7 +100,8 @@ public:
             return;
 
         case 0xFF41: // STAT: only bits 3-6 writable (mode/coincidence are PPU-owned)
-            data[addr] = (data[addr] & 0x07) | (value & 0x78);
+            if (stat_write_cb) stat_write_cb(value);
+            else data[addr] = (data[addr] & 0x07) | (value & 0x78);
             return;
 
         case 0xFF44: // LY: read-only
