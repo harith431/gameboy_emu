@@ -2,11 +2,14 @@
 #include <stdio.h>
 #include <cstdint>
 #include "memory.h"
-#include "cpu.h"
+#include "cpu_new.h"
 #include "video.h"
 
+#ifndef DBG
+#define DBG(...) ((void)0)
+#endif
 
-uint8_t framebuffer[144][160];
+extern uint8_t framebuffer[144][160];
 extern CPU cpu;
 extern Memory memory;
 
@@ -14,67 +17,48 @@ struct PPU {
     int ppu_clock = 0;
     int scanline = 0;
     int mode = 0;
-    bool  vblank_triggered = false;
+    int frames = 0;
+    bool frame_ready = false;
+    bool vblank_triggered = false;
     bool lcd_enabled = false;
 
-    
-
     void update_registers_from_memory() {
-         
         uint8_t stat = memory.read(0xFF41);
-        stat = (stat & 0xFC) | (mode & 0x03);  // bits 0-1: mode
-        
+        stat = (stat & 0xFC) | (mode & 0x03);
 
-        // --- 2. LYC=LY flag ---
         uint8_t ly = memory.read(0xFF44);
         uint8_t lyc = memory.read(0xFF45);
 
         if (ly == lyc) {
-            stat |= 0x04;  // bit 2: coincidence flag
-            if (stat & 0x40) {  // bit 6: coincidence interrupt enable
-                memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);  // STAT interrupt
+            stat |= 0x04;
+            if (stat & 0x40) {
+                memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);
             }
+        } else {
+            stat &= ~0x04;
         }
-        else {
-            stat &= ~0x04;  // clear coincidence flag
-        }
-       
 
-        // 3. Mode-based STAT interrupts (bits 3-5)
         switch (mode) {
-        case 0:  // HBlank
-            if (stat & 0x08) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);
-            break;
-        case 1:  // VBlank
-            if (stat & 0x10) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);
-            break;
-        case 2:  // OAM
-            if (stat & 0x20) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02);
-            break;
+        case 0: if (stat & 0x08) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
+        case 1: if (stat & 0x10) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
+        case 2: if (stat & 0x20) memory.write(0xFF0F, memory.read(0xFF0F) | 0x02); break;
         }
 
-        // Final writeback of updated STAT
-        memory.write(0xFF41, stat);
-       
+        // Write STAT directly: game writes are masked in Memory::write(), but
+        // the PPU owns the mode/coincidence bits.
+        memory.data[0xFF41] = stat;
     }
-    
-
-   
-
-
 
     void step(int cycles) {
         lcd_enabled = (memory.read(0xFF40) & 0x80) != 0;
 
         if (!lcd_enabled) {
-            // Optional: reset LY to 0 when LCD is off
-            memory.write(0xFF44, 0x00);
+            memory.data[0xFF44] = 0x00;
             ppu_clock = 0;
             scanline = 0;
             return;
         }
         ppu_clock += cycles;
-        
 
         if (scanline < 144) {
             if (ppu_clock < 80)
@@ -83,51 +67,43 @@ struct PPU {
                 mode = 3; // Transfer
             else
                 mode = 0; // HBlank
-        }
-        else {
+        } else {
             mode = 1; // VBlank
-        }                   // HBlank
+        }
 
         update_registers_from_memory();
 
-      
-
         if (ppu_clock >= 456) {
             ppu_clock -= 456;
-            
-            memory.write(0xFF44, static_cast<uint8_t>(scanline));
+
+            memory.data[0xFF44] = static_cast<uint8_t>(scanline);
 
             if (scanline < 144) {
                 render_scanline();
-                render_window();   // 
-                render_sprites();     // 
+                render_window();
+                render_sprites();
             }
-          
 
             if (!vblank_triggered && scanline == 144) {
-                // 1. Set VBlank interrupt
                 uint8_t iflag = memory.read(0xFF0F);
-                iflag |= 0x01;  // Set bit 0
+                iflag |= 0x01;
                 memory.write(0xFF0F, iflag);
-
-                // 2. Trigger rendering logic (optional but recommended)
-                render_frame(framebuffer);
-                SDL_Delay(100);
-                // 
-
-
                 vblank_triggered = true;
             }
+
+            if (scanline == 144) {
+                frame_ready = true;
+                if (!g_headless) render_frame(framebuffer);
+            }
+
             scanline++;
 
             if (scanline > 153) {
                 scanline = 0;
                 vblank_triggered = false;
+                frames++;
             }
-
-           
         }
-        printf("ppu_clock is %d\n", ppu_clock);
     }
 
     void render_scanline() {
@@ -140,7 +116,6 @@ struct PPU {
         uint16_t tile_map = (lcdc & 0x08) ? 0x9C00 : 0x9800;
         uint16_t tile_data = (lcdc & 0x10) ? 0x8000 : 0x8800;
         bool signed_index = !(lcdc & 0x10);
-        printf("LCDC = 0x%02X | Tile data base = 0x%04X\n", lcdc, (lcdc & 0x10) ? 0x8000 : 0x8800);
 
         for (int x = 0; x < 160; ++x) {
             uint8_t pixel_x = (x + scx) & 0xFF;
@@ -161,8 +136,6 @@ struct PPU {
             uint8_t color = (bgp >> (color_num * 2)) & 0x03;
 
             framebuffer[scanline][x] = color;
-            printf("rendered scanline - %d\n", scanline);
-            printf("color value is 0x%02X\n", color);
         }
     }
 

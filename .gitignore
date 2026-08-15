@@ -1,0 +1,27 @@
+# Build artifacts
+build/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ROM files (don't distribute copyrighted games)
+*.gb
+*.gbc
+
+# Debug logs
+*.log
