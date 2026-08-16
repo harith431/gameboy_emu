@@ -1,4 +1,4 @@
-#include "video.h"
+#include "ppu/video.h"
 #include <vector>
 
 SDL_Window* window = nullptr;

@@ -2,7 +2,7 @@
 #include <vector>
 #include <cstdint>
 #include <cstdio>
-#include "input.h"
+#include "input/input.h"
 
 // Game Boy memory map + memory-mapped I/O.
 // The PPU writes LY/STAT directly through `memory.data` (see PPU.h) so that

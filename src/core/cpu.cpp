@@ -1,4 +1,4 @@
-#include "cpu_new.h"
+#include "core/cpu.h"
 #include <cstdio>
 
 CPU cpu;

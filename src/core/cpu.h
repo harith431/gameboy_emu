@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "memory.h"
+#include "core/memory.h"
 
 // Advance the timer and PPU by `n` T-cycles. Defined in main_new.cpp.
 void tick_components(int n);

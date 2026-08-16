@@ -6,28 +6,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find SDL2
 find_package(SDL2 REQUIRED)
-# nlohmann-json is included as json.hpp header-only
 
 # Source files
 set(SOURCES
-    main_new.cpp
-    cpu_new.cpp
-    PPU.cpp
-    video.cpp
+    src/main.cpp
+    src/core/cpu.cpp
+    src/ppu/ppu.cpp
+    src/ppu/video.cpp
 )
 
 # Headers
 set(HEADERS
-    cpu_new.h
-    memory.h
-    PPU.h
-    video.h
-    input.h
-    timer.h
-    apu.h
+    src/core/cpu.h
+    src/core/memory.h
+    src/ppu/ppu.h
+    src/ppu/video.h
+    src/input/input.h
+    src/timer/timer.h
+    src/apu/apu.h
+    src/cart/mbc.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+
+# Resolve `#include "core/..."`, `#include "ppu/..."` etc. relative to src/.
+target_include_directories(${PROJECT_NAME} PRIVATE src)
 
 # Link SDL2 shared library. Do NOT link SDL2main: we use our own main()
 # (video.h defines SDL_MAIN_HANDLED) and keep a console subsystem so that

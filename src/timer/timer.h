@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "memory.h"
+#include "core/memory.h"
 
 // Game Boy Timer (cycle-accurate model).
 //
