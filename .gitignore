@@ -23,27 +23,5 @@ Thumbs.db
 *.gb
 *.gbc
 
-# Legacy first-iteration scaffolding (not used by the current build)
-json.hpp
-opcodes.json
-
-# Emulator-generated files
-*.sav
-*.state
-serial_out.txt
-
-# Bundled test ROM collection (nested repo, large + mixed licenses)
-test_roms/
-
-# Node (if any tooling is added later)
-node_modules/
-
-# Debug logs / scratch files
+# Debug logs
 *.log
-debug.txt
-events.txt
-keys.txt
-log_func.tmp
-ref_opcodes.json
-nul
-nulv
