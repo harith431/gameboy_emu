@@ -499,11 +499,12 @@ int main(int argc, char** argv) {
             uint8_t ie = memory.read(0xFFFF);
             uint8_t iff = memory.read(0xFF0F);
             if (ie & iff & 0x1F) {
+                // Wake from HALT. If IME is set, service the interrupt;
+                // otherwise just resume (the HALT bug only applies when the
+                // interrupt was pending *at* the HALT, handled in the CPU).
                 cpu.halted = false;
                 if (cpu.IME) {
-                    cpu.handleInterrupts();  // service interrupt immediately
-                } else {
-                    cpu.halt_bug = true;     // HALT bug: re-execute next instruction
+                    cpu.handleInterrupts();
                 }
             } else {
                 tick_components(4);
