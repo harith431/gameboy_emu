@@ -19,9 +19,9 @@ All of the following must be true:
 - [ ] **blargg** — all DMG tests pass:
   - [x] `cpu_instrs` (and the 11 individual `cpu_XX` tests)
   - [x] `instr_timing`
-  - [ ] `mem_timing` (and `mem_timing-2` via screenshot)
-  - [ ] `halt_bug` (screenshot)
-  - [ ] `oam_bug` (screenshot)
+  - [x] `mem_timing` (and `mem_timing-2` via screenshot)
+  - [x] `halt_bug` (screenshot)
+  - [ ] `oam_bug` (screenshot; 6/8 sub-tests pass, exact-pattern CRC checks remain)
   - [ ] `dmg_sound`
 - [ ] **mooneye** — all `acceptance/` tests that apply to DMG pass
   (timer done; PPU, interrupts, OAM DMA, serial, boot, misc pending)
@@ -57,8 +57,8 @@ PPU tests passing: `intr_1_2_timing`, `intr_2_0_timing`, `intr_2_mode0_timing`,
 PPU tests still failing: `intr_2_mode0_timing_sprites` (pixel-FIFO sprite-fetch
 timing is implemented and 104/105 of its cases pass; the remaining case — 10
 sprites at X=1 — is off by one dot).
-Also still failing/unverified: `mem_timing`, `halt_bug`, `oam_bug`, `dmg_sound`,
-`dmg-acid2`, and the mooneye OAM-DMA / serial / boot acceptance tests.
+Still failing/unverified: `oam_bug` exact-pattern CRC sub-tests (2 of 8),
+`dmg_sound`, `dmg-acid2`, and the mooneye OAM-DMA / serial / boot tests.
 
 ---
 
@@ -84,7 +84,8 @@ sync. Remaining work:
 - [x] LCD-on: line 0 starts in mode 0 and mode 3 begins 5 dots early
 - [x] LCD-on: line-0 LY increment (LYC-dependent) + OAM read/write offsets
 - [ ] OAM DMA timing (blocks CPU/bus for 160 cycles)
-- [ ] Result: blargg `mem_timing`, `halt_bug`, `oam_bug` pass; mooneye
+- [x] blargg `mem_timing`, `mem_timing-2`, `halt_bug` pass
+- [ ] blargg `oam_bug` exact-pattern sub-tests (6/8 pass); mooneye
       `acceptance/ppu/*`, `acceptance/oam_dma/*` pass
 - [ ] `dmg-acid2` renders correctly (compare screenshot to reference)
 
