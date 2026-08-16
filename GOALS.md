@@ -31,7 +31,7 @@ All of the following must be true:
 - [ ] **Real games** — at least these boot and are playable (correct graphics,
   input, audio, no crashes): Tetris, Super Mario Land, The Legend of Zelda:
   Link's Awakening, Pokémon Red/Blue, Kirby's Dream Land
-- [ ] **Battery save** — `.sav` persistence for MBC RAM+battery carts
+- [x] **Battery save** — `.sav` persistence for MBC RAM+battery carts
 - [x] **60 FPS** — frame pacing added (sleep to ~59.73 fps)
 
 ---
@@ -112,7 +112,7 @@ Deliverables / acceptance:
 ### M5 — Real-game compatibility
 Deliverables / acceptance:
 - [ ] The 5 games in "Definition of Done" boot and play correctly
-- [ ] Battery save/load (`*.sav`) for carts with MBC RAM+battery
+- [x] Battery save/load (`*.sav`) for carts with MBC RAM+battery
 - [ ] 60 FPS sustained; no audio crackle
 - [ ] Fix any game-specific bugs found (e.g. sprite priority, window, timer,
       halt, MBC edge cases)
