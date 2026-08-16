@@ -1,22 +1,58 @@
 # 🕹️ Game Boy Emulator
 
-A C++ Game Boy (DMG-01) emulator using SDL3 for cross-platform rendering.
+A cycle-accurate **Game Boy (DMG-01)** emulator written from scratch in C++.
+
+This project exists to learn **how a computer system actually works** — the
+CPU microarchitecture, the memory map and bus timing, the pixel pipeline, the
+sound hardware, and the memory-bank controllers. Every subsystem is modeled
+close to the real silicon and verified against the hardware test suites
+(blargg + mooneye).
 
 ---
 
-## 🚧 Current Status
+## ✅ What works
 
-- ✅ CPU core: all blargg CPU + instruction-timing tests pass
-- ✅ PPU: background, window, and sprite rendering with scanline timing
-- ✅ SDL2 video output (160×144 scaled)
-- ✅ Input/joypad via SDL keyboard events
-- ✅ Timer (DIV/TIMA/TMA/TAC) — cycle-accurate; all mooneye timer tests pass
-- ✅ Interrupt handling (VBlank, STAT, Timer, Joypad)
-- ✅ MBC1 / MBC2 / MBC5 / MBC3 (banking + RTC) — mooneye MBC tests pass
-- ✅ OAM DMA
-- ⚠️ PPU timing is scanline-based (mem_timing / oam_bug tests fail)
-- ✅ Audio (APU): square 1/2, wave, noise + frame sequencer, SDL output
-- ❌ Serial link (output-only for test ROMs)
+| Subsystem | Status |
+|-----------|--------|
+| **CPU** (SM83/LR35902, all opcodes + CB, interrupts, HALT bug) | ✅ blargg `cpu_instrs` + `instr_timing` |
+| **PPU** (background/window/sprites, per-T-cycle mode timing, sprite-FIFO, LCD-on quirk, OAM corruption bug) | ✅ 11/12 mooneye PPU tests |
+| **Timer** (cycle-accurate, reload delay, glitches) | ✅ 10/10 mooneye timer |
+| **MBC1 / MBC2 / MBC3 / MBC5** (banking + MBC3 RTC) | ✅ mooneye MBC |
+| **APU** (square 1/2, wave, noise, envelope, sweep, frame sequencer) | ✅ audible via SDL |
+| **Joypad** | ✅ keyboard |
+| **Battery save** (`.sav`), **save states** (F5/F7) | ✅ |
+| **Frame pacing** (~59.73 fps) | ✅ |
+
+### Test scoreboard
+- `run_tests.sh` — **50/50** (CPU + timer + MBC)
+- mooneye PPU — **11/12** (one sprite-fetch edge case is 1 dot off)
+- blargg `halt_bug`, `mem_timing`, `mem_timing-2` — **pass**
+- blargg `oam_bug` — **6/8** (exact corruption-pattern CRC checks remain)
+
+Still pending: `dmg_sound` / `dmg-acid2` (ROMs not bundled), serial link, and the
+last 2 `oam_bug` sub-tests. Full detail lives in [`GOALS.md`](GOALS.md).
+
+---
+
+## 🧠 Why this project
+
+The goal is to understand the machine bottom-up, the way an electrical &
+computer engineer would:
+
+- **CPU** — how instructions are fetched, decoded, and how each memory access
+  is interleaved with the rest of the system on a per-T-cycle basis.
+- **Memory & bus** — the 64 KB address space, echo RAM, and why VRAM/OAM are
+  *blocked* during certain PPU modes.
+- **PPU** — the 456-dot scanline, mode 2/3/0 timing, the pixel FIFO, sprite
+  fetch penalties, and the STAT interrupt quirks.
+- **Timer & interrupts** — the shared DIV counter, falling-edge clocking, and
+  the interrupt priority chain.
+- **APU** — square/wave/noise synthesis, envelopes, sweep, and the 512 Hz frame
+  sequencer.
+- **Cartridges** — how MBCs page ROM/RAM into the address space, and the RTC.
+
+Each of these maps to a real hardware behavior you can read about and then
+*see pass* a hardware test ROM.
 
 ---
 
@@ -24,8 +60,8 @@ A C++ Game Boy (DMG-01) emulator using SDL3 for cross-platform rendering.
 
 ### Prerequisites
 - CMake 3.16+
-- SDL3
-- nlohmann-json
+- SDL2
+- (header-only `json.hpp` is bundled)
 
 ### Build
 ```bash
@@ -36,17 +72,14 @@ cmake --build .
 
 ### Run
 ```bash
-./gameboy_emu rom.gb                    # windowed (interactive)
-./gameboy_emu rom.gb --headless         # no window; run 250M cycles
-./gameboy_emu rom.gb --headless --frames 300
-./gameboy_emu rom.gb --headless --cycles 500000000
-./gameboy_emu rom.gb --headless --frames 60 --screenshot shot.bmp
+./play.sh                 # plays tetris.gb (auto PATH for SDL2)
+./play.sh mygame.gb
+./build/gameboy_emu.exe rom.gb --headless --cycles 500000000   # test ROMs
 ```
-Test ROM serial output (blargg/mooneye) is printed to stdout.
 
 ### Controls
-| Key | Game Boy Button |
-|-----|----------------|
+| Key | Game Boy button |
+|-----|-----------------|
 | Arrow keys (or WASD) | D-Pad |
 | Z (or K) | A |
 | X (or J) | B |
@@ -56,29 +89,37 @@ Test ROM serial output (blargg/mooneye) is printed to stdout.
 
 ---
 
-## 📁 Project Structure
-```
-├── CPU.h          # CPU registers, flags, interrupt control
-├── memory.h       # 64KB address space with ROM write protection
-├── PPU.h          # Pixel Processing Unit (scanline renderer)
-├── PPU.cpp        # PPU instantiation
-├── video.h/.cpp   # SDL3 video output
-├── input.h        # Joypad input handling
-├── timer.h        # DIV/TIMA/TMA/TAC timer
-├── main.cpp       # ROM loading, CPU loop, emulator main
-├── opcodes.json   # Complete opcode metadata (512 + 256 CB)
-├── CMakeLists.txt # Build system
-└── AGENTS.md      # Developer documentation
-```
+## 📁 Project structure
+
+| File | Role |
+|------|------|
+| `cpu_new.cpp/.h` | SM83 CPU — one instruction per `step()`, per-access bus sync |
+| `memory.h` | 64 KB address space + MMIO routing + bus blocking |
+| `PPU.h` | Pixel pipeline, mode timing, sprite FIFO, OAM bug |
+| `timer.h` | cycle-accurate timer (shared divider, reload state machine) |
+| `apu.h` | 4-channel audio + frame sequencer |
+| `mbc.h` | MBC1/2/3/5 banking + external RAM + RTC |
+| `video.cpp/.h` | SDL2 window/texture |
+| `input.h` | joypad + keyboard |
+| `main_new.cpp` | wiring, main loop, frame pacing, save states |
+| `GOALS.md` | milestones + test scoreboard |
+| `AGENTS.md` | architecture notes for coding agents |
+
+`main.cpp` / `CPU.h` / `opcodes.json` are legacy scaffolding from the first
+iteration and no longer drive the build.
 
 ---
 
 ## 🎯 Roadmap
-- [x] MBC1/MBC2/MBC5 support (and MBC3 banking + RTC)
-- [x] MBC3 RTC (real-time clock)
-- [ ] Audio (APU) - Square waves, wave, noise
-- [ ] Cycle-accurate PPU timing (STAT interrupts, mode timing)
-- [x] Save states (F5 save, F7 load)
-- [ ] Debugger with breakpoints
-- [ ] GBC support (SM83 double-speed mode)
 
+- [x] CPU core + instruction timing
+- [x] Timer, MBC1/2/3/5 + RTC
+- [x] Cycle-accurate PPU (mode timing, sprite FIFO, LCD-on quirk)
+- [x] APU (4 channels + SDL output)
+- [x] Battery save + save states
+- [x] Frame pacing
+- [ ] `dmg_sound` + `dmg-acid2` verification
+- [ ] `oam_bug` exact-pattern sub-tests
+- [ ] Serial link (2-player)
+- [ ] Debugger with breakpoints
+- [ ] GBC support
