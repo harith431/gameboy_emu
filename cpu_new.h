@@ -5,6 +5,11 @@
 // Advance the timer and PPU by `n` T-cycles. Defined in main_new.cpp.
 void tick_components(int n);
 
+// DMG OAM corruption bug: called on 16-bit register ops (INC/DEC/PUSH/POP/
+// LD A,(HL+)) with the register value, so the PPU can corrupt OAM if it lies
+// in $FE00-$FEFF during mode 2. Defined in main_new.cpp.
+void oam_bug_hook(uint16_t address);
+
 struct CPU {
     // T-cycle position within the currently-executing instruction. Used to
     // interleave memory accesses with the PPU/timer (see read8/write8).

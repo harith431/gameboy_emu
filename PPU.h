@@ -24,6 +24,7 @@ struct PPU {
     int line_wrap = 456;     // dot at which the scanline wraps (452 on line 0)
     int ly_delay = 0;        // remaining dots before the delayed LY write
     uint8_t ly_pending = 0;  // LY value to write once ly_delay expires
+    int oam_scan_row = 0xFF; // OAM row currently being scanned (0xFF = idle)
     int frames = 0;
     bool frame_ready = false;
     bool lcd_enabled = false;
@@ -306,7 +307,84 @@ struct PPU {
                     set_mode(0); // transfer -> HBlank
                 }
             }
+
+            // Track the OAM row being scanned during mode 2 (for the DMG OAM
+            // corruption bug). SameBoy's formula: row = (index & ~1) * 4 + 8,
+            // where the OAM search index advances every 2 dots.
+            if (mode == 2 && scanline < 144) {
+                oam_scan_row = 8 + 8 * (ppu_clock / 4);
+            } else {
+                oam_scan_row = 0xFF;
+            }
         }
+    }
+
+    // DMG OAM corruption bug: when the CPU touches OAM during mode 2, a row
+    // of OAM is corrupted (copied) based on the PPU's current scan position.
+    // "write" variant (INC/DEC/PUSH and OAM writes), matching SameBoy's
+    // GB_trigger_oam_bug.
+    void trigger_oam_bug(uint16_t address) {
+        if (address < 0xFE00 || address > 0xFEFF) return;  // OAM range only
+        int row = oam_scan_row;
+        if (row == 0xFF || row < 8) return;
+        uint8_t* oam = &memory.data[0xFE00];
+        uint16_t* base = (uint16_t*)(oam + row);
+        base[0] = (uint16_t)(base[-4] | (base[0] & base[-2]));
+        for (int i = 2; i < 8; i++) oam[row + i] = oam[row - 8 + i];
+    }
+
+    // "read" variant (POP, LD A,(HL+)/(HL-), OAM reads), matching SameBoy's
+    // GB_trigger_oam_bug_read.
+    void trigger_oam_bug_read(uint16_t address) {
+        if (address < 0xFE00 || address > 0xFEFF) return;
+        int row = oam_scan_row;
+        if (row == 0xFF || row < 8) return;
+        uint8_t* oam = &memory.data[0xFE00];
+        auto rd = [&](int off) -> uint16_t {
+            return (uint16_t)(oam[row + off] | (oam[row + off + 1] << 8));
+        };
+        auto wr = [&](int off, uint16_t v) {
+            oam[row + off] = v & 0xFF;
+            oam[row + off + 1] = v >> 8;
+        };
+
+        if ((row & 0x18) == 0x10) {
+            // Secondary (rows 0x10, 0x30, 0x50, 0x70, 0x90).
+            if (row < 0x98) {
+                uint16_t a = rd(-16), b = rd(-8), c = rd(0), d = rd(-4);
+                wr(-8, (uint16_t)((b & (a | c | d)) | (a & c & d)));
+                for (int i = 0; i < 8; i++) oam[row - 0x10 + i] = oam[row - 0x08 + i];
+            }
+        } else if ((row & 0x18) == 0x00) {
+            if (row == 0x40) {
+                // Quaternary (DMG).
+                if (row < 0x98) {
+                    uint16_t a = (uint16_t)(oam[0] | (oam[1] << 8));
+                    uint16_t b = rd(0), c = rd(-4), d = rd(-6), e = rd(-8),
+                             f = rd(-14), g = rd(-16), h = rd(-32);
+                    wr(-8, (uint16_t)((e & (h | g | (~d & f) | c | b)) | (c & g & h)));
+                    for (int i = 0; i < 8; i++) oam[row - 0x10 + i] = oam[row - 0x20 + i] = oam[row - 0x08 + i];
+                }
+            } else {
+                // Tertiary (rows 0x00, 0x20, 0x60, 0x80).
+                if (row < 0x98) {
+                    uint16_t a = rd(0), b = rd(-4), c = rd(-8), d = rd(-16), e = rd(-32);
+                    uint16_t r;
+                    if (row == 0x20) r = (uint16_t)((c & (a | b | d | e)) | (a & b & d & e));
+                    else if (row == 0x60) r = (uint16_t)((c & (a | b | d | e)) | (b & d & e));
+                    else r = (uint16_t)(c | (a & b & d & e));
+                    wr(-8, r);
+                    for (int i = 0; i < 8; i++) oam[row - 0x10 + i] = oam[row - 0x20 + i] = oam[row - 0x08 + i];
+                }
+            }
+        } else {
+            // Common case.
+            uint16_t a = rd(0), b = rd(-8), c = rd(-4);
+            uint16_t r = (uint16_t)(b | (a & c));
+            wr(-8, r); wr(0, r);
+        }
+        for (int i = 0; i < 8; i++) oam[row + i] = oam[row - 8 + i];
+        if (row == 0x80) for (int i = 0; i < 8; i++) oam[i] = oam[row + i];
     }
 
     void render_scanline() {

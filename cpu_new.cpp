@@ -154,10 +154,10 @@ int CPU::step() {
     } break;
     
     // === PUSH / POP ===
-    case 0xF5: push16(AF()); baseCycles = 16; break;
-    case 0xC5: push16(BC()); baseCycles = 16; break;
-    case 0xD5: push16(DE()); baseCycles = 16; break;
-    case 0xE5: push16(HL()); baseCycles = 16; break;
+    case 0xF5: oam_bug_hook(SP); push16(AF()); baseCycles = 16; break;
+    case 0xC5: oam_bug_hook(SP); push16(BC()); baseCycles = 16; break;
+    case 0xD5: oam_bug_hook(SP); push16(DE()); baseCycles = 16; break;
+    case 0xE5: oam_bug_hook(SP); push16(HL()); baseCycles = 16; break;
     case 0xF1: setAF(pop16()); baseCycles = 12; break;
     case 0xC1: setBC(pop16()); baseCycles = 12; break;
     case 0xD1: setDE(pop16()); baseCycles = 12; break;
@@ -327,14 +327,14 @@ int CPU::step() {
     case 0x35: { uint8_t v = read8(HL()); setH((v & 0xF) == 0); v--; write8(HL(), v); setZ(v == 0); setN(true); baseCycles = 12; } break;
     
     // === 16-bit INC/DEC ===
-    case 0x03: setBC(BC()+1); baseCycles = 8; break;
-    case 0x13: setDE(DE()+1); baseCycles = 8; break;
-    case 0x23: setHL(HL()+1); baseCycles = 8; break;
-    case 0x33: SP++; baseCycles = 8; break;
-    case 0x0B: setBC(BC()-1); baseCycles = 8; break;
-    case 0x1B: setDE(DE()-1); baseCycles = 8; break;
-    case 0x2B: setHL(HL()-1); baseCycles = 8; break;
-    case 0x3B: SP--; baseCycles = 8; break;
+    case 0x03: oam_bug_hook(BC()); setBC(BC()+1); baseCycles = 8; break;
+    case 0x13: oam_bug_hook(DE()); setDE(DE()+1); baseCycles = 8; break;
+    case 0x23: oam_bug_hook(HL()); setHL(HL()+1); baseCycles = 8; break;
+    case 0x33: oam_bug_hook(SP); SP++; baseCycles = 8; break;
+    case 0x0B: oam_bug_hook(BC()); setBC(BC()-1); baseCycles = 8; break;
+    case 0x1B: oam_bug_hook(DE()); setDE(DE()-1); baseCycles = 8; break;
+    case 0x2B: oam_bug_hook(HL()); setHL(HL()-1); baseCycles = 8; break;
+    case 0x3B: oam_bug_hook(SP); SP--; baseCycles = 8; break;
     
     // === ADD HL,rr ===
     case 0x09: { uint16_t v = BC(); uint32_t r = HL() + v; setN(false); setH((HL()&0xFFF)+(v&0xFFF)>0xFFF); setC(r>0xFFFF); setHL(r); baseCycles = 8; } break;

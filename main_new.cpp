@@ -33,6 +33,10 @@ void tick_components(int n) {
     if (!g_headless) apu.step(n);
 }
 
+void oam_bug_hook(uint16_t address) {
+    ppu.trigger_oam_bug(address);
+}
+
 static void init_fake_bios() {
     cpu.A = 0x01; cpu.F = 0xB0;
     cpu.B = 0x00; cpu.C = 0x13;
@@ -406,6 +410,8 @@ int main(int argc, char** argv) {
     memory.stat_write_cb = [](uint8_t v) { ppu.write_stat(v); };
     memory.apu_read_cb   = [](uint16_t a) { return apu.read(a); };
     memory.apu_write_cb  = [](uint16_t a, uint8_t v) { apu.write(a, v); };
+    memory.oam_bug_cb      = [](uint16_t a) { ppu.trigger_oam_bug(a); };
+    memory.oam_bug_read_cb  = [](uint16_t a) { ppu.trigger_oam_bug_read(a); };
     // Bus blocking follows the STAT-delayed mode (the same signal the STAT
     // register's mode bits report), so OAM/VRAM accessibility matches STAT
     // mode timing exactly (mooneye intr_2_oam_ok_timing).

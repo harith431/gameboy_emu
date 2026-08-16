@@ -23,6 +23,8 @@ public:
     void (*stat_write_cb)(uint8_t) = nullptr;
     uint8_t (*apu_read_cb)(uint16_t) = nullptr;
     void (*apu_write_cb)(uint16_t, uint8_t) = nullptr;
+    void (*oam_bug_cb)(uint16_t) = nullptr;      // DMG OAM corruption (write variant)
+    void (*oam_bug_read_cb)(uint16_t) = nullptr; // DMG OAM corruption (read variant)
 
     // Cartridge (MBC) hooks: ROM window and external RAM.
     uint8_t (*cart_read_cb)(uint16_t) = nullptr;
@@ -40,6 +42,7 @@ public:
     Memory() { data.resize(0x10000); }
 
     uint8_t read(uint16_t addr) {
+        if (addr >= 0xFE00 && addr <= 0xFE9F && oam_bug_read_cb) oam_bug_read_cb(addr);
         if (addr < 0x8000 && cart_read_cb) return cart_read_cb(addr);       // ROM
         if (addr >= 0xA000 && addr <= 0xBFFF && cart_ram_read_cb) return cart_ram_read_cb(addr); // cartridge RAM
         if (ppu_mode_cb) {
@@ -57,6 +60,7 @@ public:
     }
 
     void write(uint16_t addr, uint8_t value) {
+        if (addr >= 0xFE00 && addr <= 0xFE9F && oam_bug_cb) oam_bug_cb(addr);
         // Echo RAM mirrors WRAM (0xC000-0xDDFF)
         if (addr >= 0xE000 && addr <= 0xFDFF) {
             data[addr - 0x2000] = value;
