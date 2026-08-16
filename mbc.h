@@ -19,6 +19,7 @@ struct Cartridge {
     std::vector<uint8_t> mbc2_ram; // 512 nibbles for MBC2 (512 bytes, low nibble)
 
     bool ram_enabled = false;
+    bool has_battery = false; // battery-backed external RAM (persist to .sav)
     uint8_t rom_bank = 1;   // MBC1: low 5 bits; MBC3/MBC5: full bank
     uint8_t bank_hi = 0;    // MBC1: upper 2 bits
     uint8_t ram_bank = 0;   // MBC3/MBC5: RAM bank (0-15)
@@ -39,6 +40,15 @@ struct Cartridge {
             case 0x0F: case 0x10: case 0x11: case 0x12: case 0x13: type = MBC3; break;
             case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E: type = MBC5; break;
             default: type = NONE; break;
+        }
+
+        // Battery-backed cartridges (RAM written to disk as a .sav file).
+        switch (cart_type) {
+            case 0x03: case 0x06: case 0x09: case 0x0D:
+            case 0x0F: case 0x10: case 0x13:
+            case 0x1B: case 0x1E:
+                has_battery = true; break;
+            default: has_battery = false; break;
         }
 
         uint8_t ramsize = rom.size() > 0x149 ? rom[0x149] : 0;
@@ -184,6 +194,31 @@ struct Cartridge {
         size_t off = (size_t)(current_ram_bank() % ram_banks) * 0x2000 + (addr - 0xA000);
         if (off >= ram.size()) return;
         ram[off] = value;
+    }
+
+    // Load/save battery-backed RAM (.sav file). Returns true on successful load.
+    bool load_ram_file(const char* path) {
+        FILE* f = fopen(path, "rb");
+        if (!f) return false;
+        if (type == MBC2) {
+            if (mbc2_ram.size() != 512) mbc2_ram.assign(512, 0);
+            fread(mbc2_ram.data(), 1, 512, f);
+        } else if (!ram.empty()) {
+            fread(ram.data(), 1, ram.size(), f);
+        }
+        fclose(f);
+        return true;
+    }
+
+    void save_ram_file(const char* path) const {
+        FILE* f = fopen(path, "wb");
+        if (!f) { fprintf(stderr, "cannot write save file: %s\n", path); return; }
+        if (type == MBC2) {
+            fwrite(mbc2_ram.data(), 1, mbc2_ram.size(), f);
+        } else if (!ram.empty()) {
+            fwrite(ram.data(), 1, ram.size(), f);
+        }
+        fclose(f);
     }
 };
 

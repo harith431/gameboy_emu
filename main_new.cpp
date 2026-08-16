@@ -194,6 +194,15 @@ static std::string state_path(const char* rom_path) {
     return p + ".state";
 }
 
+static std::string sav_path(const char* rom_path) {
+    std::string p = rom_path;
+    size_t dot = p.find_last_of('.');
+    size_t slash = p.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+        p = p.substr(0, dot);
+    return p + ".sav";
+}
+
 static void save_state(const char* rom_path) {
     std::string path = state_path(rom_path);
     FILE* f = fopen(path.c_str(), "wb");
@@ -423,6 +432,13 @@ int main(int argc, char** argv) {
         if (g_headless) return 1;
     }
 
+    // Battery-backed carts: load existing save data (if any).
+    if (cartridge.has_battery) {
+        std::string sp = sav_path(rom_path);
+        if (cartridge.load_ram_file(sp.c_str()))
+            fprintf(stderr, "Loaded save: %s\n", sp.c_str());
+    }
+
     SDL_AudioDeviceID audio_dev = 0;
     if (!g_headless) {
         init_video();
@@ -506,11 +522,23 @@ int main(int argc, char** argv) {
             }
             std::this_thread::sleep_until(next_frame);
             next_frame += frame_interval;
+
+            // Auto-save battery RAM every ~5 seconds (300 frames).
+            if (cartridge.has_battery && (ppu.frames % 300) == 0) {
+                cartridge.save_ram_file(sav_path(rom_path).c_str());
+            }
         }
 
         if (g_headless && total_cycles >= max_cycles) {
             running = false;
         }
+    }
+
+    // Final save on clean exit.
+    if (cartridge.has_battery) {
+        std::string sp = sav_path(rom_path);
+        cartridge.save_ram_file(sp.c_str());
+        fprintf(stderr, "Saved: %s\n", sp.c_str());
     }
 
     if (audio_dev) SDL_CloseAudioDevice(audio_dev);
