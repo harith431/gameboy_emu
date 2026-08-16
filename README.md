@@ -1,31 +1,125 @@
 # 🕹️ Game Boy Emulator
 
-A lightweight Game Boy emulator project focused on replicating the original hardware architecture. The goal is to emulate the core functionality of the Game Boy across different platforms, with both software simulation and potential hardware integration (e.g., embedded systems, FPGA, or retro handhelds).
+A cycle-accurate **Game Boy (DMG-01)** emulator written from scratch in C++.
+
+This project exists to learn **how a computer system actually works** — the
+CPU microarchitecture, the memory map and bus timing, the pixel pipeline, the
+sound hardware, and the memory-bank controllers. Every subsystem is modeled
+close to the real silicon and verified against the hardware test suites
+(blargg + mooneye).
 
 ---
 
-## 🚧 Current Status (June 2025)
+## ✅ What works
 
-- ✅ CPU core implemented (instruction fetch-decode-execute cycle)
-- ✅ PC advancement fixed using instruction length
-- ✅ Most base opcodes are working correctly
-- ⚠️ CB-prefixed and interrupt-related opcodes in progress
-- ❌ PPU (graphics), audio, and input systems not yet implemented
+| Subsystem | Status |
+|-----------|--------|
+| **CPU** (SM83/LR35902, all opcodes + CB, interrupts, HALT bug) | ✅ blargg `cpu_instrs` + `instr_timing` |
+| **PPU** (background/window/sprites, per-T-cycle mode timing, sprite-FIFO, LCD-on quirk, OAM corruption bug) | ✅ 11/12 mooneye PPU tests |
+| **Timer** (cycle-accurate, reload delay, glitches) | ✅ 10/10 mooneye timer |
+| **MBC1 / MBC2 / MBC3 / MBC5** (banking + MBC3 RTC) | ✅ mooneye MBC |
+| **APU** (square 1/2, wave, noise, envelope, sweep, frame sequencer) | ✅ audible via SDL |
+| **Joypad** | ✅ keyboard |
+| **Battery save** (`.sav`), **save states** (F5/F7) | ✅ |
+| **Frame pacing** (~59.73 fps) | ✅ |
+
+### Test scoreboard
+- `run_tests.sh` — **50/50** (CPU + timer + MBC)
+- mooneye PPU — **11/12** (one sprite-fetch edge case is 1 dot off)
+- blargg `halt_bug`, `mem_timing`, `mem_timing-2` — **pass**
+- blargg `oam_bug` — **6/8** (exact corruption-pattern CRC checks remain)
+
+Still pending: `dmg_sound` / `dmg-acid2` (ROMs not bundled), serial link, and the
+last 2 `oam_bug` sub-tests. Full detail lives in [`GOALS.md`](GOALS.md).
 
 ---
 
-## 🎯 Project Goals
+## 🧠 Why this project
 
-- Emulate Game Boy architecture (CPU, PPU, APU, MMU)
-- Simulate hardware behavior on:
-  - Desktop platforms (cross-platform)
-  - Embedded systems (e.g., Arduino, STM32)
-  - FPGA platforms (future goal)
-- Explore hardware-software co-design and system-level integration
+The goal is to understand the machine bottom-up, the way an electrical &
+computer engineer would:
+
+- **CPU** — how instructions are fetched, decoded, and how each memory access
+  is interleaved with the rest of the system on a per-T-cycle basis.
+- **Memory & bus** — the 64 KB address space, echo RAM, and why VRAM/OAM are
+  *blocked* during certain PPU modes.
+- **PPU** — the 456-dot scanline, mode 2/3/0 timing, the pixel FIFO, sprite
+  fetch penalties, and the STAT interrupt quirks.
+- **Timer & interrupts** — the shared DIV counter, falling-edge clocking, and
+  the interrupt priority chain.
+- **APU** — square/wave/noise synthesis, envelopes, sweep, and the 512 Hz frame
+  sequencer.
+- **Cartridges** — how MBCs page ROM/RAM into the address space, and the RTC.
+
+Each of these maps to a real hardware behavior you can read about and then
+*see pass* a hardware test ROM.
 
 ---
 
 ## 🛠️ Build & Run
 
-> ⚠️ Basic emulator loop only; no display or sound yet
+### Prerequisites
+- CMake 3.16+
+- SDL2
+- (header-only `json.hpp` is bundled)
 
+### Build
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+### Run
+```bash
+./play.sh                 # plays tetris.gb (auto PATH for SDL2)
+./play.sh mygame.gb
+./build/gameboy_emu.exe rom.gb --headless --cycles 500000000   # test ROMs
+```
+
+### Controls
+| Key | Game Boy button |
+|-----|-----------------|
+| Arrow keys (or WASD) | D-Pad |
+| Z (or K) | A |
+| X (or J) | B |
+| Enter / Space | Start |
+| Left/Right Shift | Select |
+| F5 / F7 | Save / Load state |
+
+---
+
+## 📁 Project structure
+
+| File | Role |
+|------|------|
+| `cpu_new.cpp/.h` | SM83 CPU — one instruction per `step()`, per-access bus sync |
+| `memory.h` | 64 KB address space + MMIO routing + bus blocking |
+| `PPU.h` | Pixel pipeline, mode timing, sprite FIFO, OAM bug |
+| `timer.h` | cycle-accurate timer (shared divider, reload state machine) |
+| `apu.h` | 4-channel audio + frame sequencer |
+| `mbc.h` | MBC1/2/3/5 banking + external RAM + RTC |
+| `video.cpp/.h` | SDL2 window/texture |
+| `input.h` | joypad + keyboard |
+| `main_new.cpp` | wiring, main loop, frame pacing, save states |
+| `GOALS.md` | milestones + test scoreboard |
+| `AGENTS.md` | architecture notes for coding agents |
+
+`main.cpp` / `CPU.h` / `opcodes.json` are legacy scaffolding from the first
+iteration and no longer drive the build.
+
+---
+
+## 🎯 Roadmap
+
+- [x] CPU core + instruction timing
+- [x] Timer, MBC1/2/3/5 + RTC
+- [x] Cycle-accurate PPU (mode timing, sprite FIFO, LCD-on quirk)
+- [x] APU (4 channels + SDL output)
+- [x] Battery save + save states
+- [x] Frame pacing
+- [ ] `dmg_sound` + `dmg-acid2` verification
+- [ ] `oam_bug` exact-pattern sub-tests
+- [ ] Serial link (2-player)
+- [ ] Debugger with breakpoints
+- [ ] GBC support
