@@ -45,16 +45,17 @@ Passing (50/50 in `run_tests.sh`):
 | CPU (all opcodes incl. CB, flags, interrupts) | ✅ blargg `cpu_instrs` + `instr_timing` pass |
 | Timer (cycle-accurate, reload delay, DIV/TAC glitches) | ✅ 10/10 mooneye timer tests |
 | MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) | ✅ mooneye MBC tests |
-| PPU (background / window / sprites) | ⚠️ per-T-cycle mode timing + CPU interleave; 6/12 mooneye PPU tests |
+| PPU (background / window / sprites) | ⚠️ per-T-cycle mode timing + CPU interleave; 9/12 mooneye PPU tests |
 | APU | ❌ not implemented |
 | Serial | ⚠️ output-only (enough for test ROMs) |
 
 PPU tests passing: `intr_1_2_timing`, `intr_2_0_timing`, `intr_2_mode0_timing`,
 `intr_2_mode3_timing`, `stat_lyc_onoff`, `vblank_stat_intr`,
-`hblank_ly_scx_timing`, `stat_irq_blocking` (8/12).
+`hblank_ly_scx_timing`, `stat_irq_blocking`, `intr_2_oam_ok_timing` (9/12).
 
-PPU tests still failing: `intr_2_mode0_timing_sprites`, `intr_2_oam_ok_timing`
-(need pixel-FIFO sprite-fetch timing), `lcdon_timing`, `lcdon_write_timing`
+PPU tests still failing: `intr_2_mode0_timing_sprites` (pixel-FIFO sprite-fetch
+timing is implemented and 104/105 of its cases pass; the remaining case — 10
+sprites at X=1 — is off by one dot), `lcdon_timing`, `lcdon_write_timing`
 (need the LCD-on 2-cycle offset quirk).
 Also still failing/unverified: `mem_timing`, `halt_bug`, `oam_bug`, `dmg_sound`,
 `dmg-acid2`, and the mooneye OAM-DMA / serial / boot acceptance tests.
@@ -75,8 +76,11 @@ sync. Remaining work:
 - [x] LYC write semantics, LCD on/off transitions, VBlank + line-144 mode-2 int
 - [x] SCX-dependent mode-3 length (172 + 4*ceil(SCX&7/4))
 - [x] STAT IRQ blocking (level-triggered line with rising-edge detection)
-- [x] VRAM/OAM bus blocking during modes 2/3
-- [ ] Pixel-FIFO sprite-fetch timing (mode-3 length with sprites)
+- [x] VRAM/OAM bus blocking during modes 2/3 (now follows the STAT-delayed
+      mode so OAM accessibility matches STAT mode timing)
+- [x] Pixel-FIFO sprite-fetch timing (mode-3 length with sprites) — pixel-FIFO
+      simulation added; 104/105 `intr_2_mode0_timing_sprites` cases pass
+      (10 sprites at X=1 is off by one dot)
 - [ ] LCD-on 2-cycle offset quirk
 - [ ] OAM DMA timing (blocks CPU/bus for 160 cycles)
 - [ ] Result: blargg `mem_timing`, `halt_bug`, `oam_bug` pass; mooneye
