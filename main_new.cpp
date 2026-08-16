@@ -3,6 +3,7 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <string>
 #include <chrono>
 #include <thread>
 #include "memory.h"
@@ -179,6 +180,184 @@ static void write_bmp(const char* path, const uint8_t fb[144][160]) {
     fprintf(stderr, "Wrote screenshot: %s\n", path);
 }
 
+// ---------------------------------------------------------------------------
+// Save states (F5 = save, F7 = load). Serializes the full emulator state to a
+// .state file next to the ROM.
+// ---------------------------------------------------------------------------
+
+static std::string state_path(const char* rom_path) {
+    std::string p = rom_path;
+    size_t dot = p.find_last_of('.');
+    size_t slash = p.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+        p = p.substr(0, dot);
+    return p + ".state";
+}
+
+static void save_state(const char* rom_path) {
+    std::string path = state_path(rom_path);
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) { fprintf(stderr, "save state failed: %s\n", path.c_str()); return; }
+
+    uint32_t magic = 0x30534247u; // "GBS0"
+    uint32_t version = 1;
+    fwrite(&magic, 4, 1, f);
+    fwrite(&version, 4, 1, f);
+
+    auto u8  = [&](uint8_t  v){ fwrite(&v,1,1,f); };
+    auto u16 = [&](uint16_t v){ fwrite(&v,2,1,f); };
+    auto u32 = [&](uint32_t v){ fwrite(&v,4,1,f); };
+    auto i32 = [&](int32_t  v){ fwrite(&v,4,1,f); };
+    auto bl  = [&](bool v){ uint8_t b = v?1:0; fwrite(&b,1,1,f); };
+    auto raw = [&](const void* p, size_t n){ fwrite(p, n, 1, f); };
+
+    // CPU
+    i32(cpu.instr_cycle); i32(cpu.synced_cycle);
+    u8(cpu.A); u8(cpu.B); u8(cpu.C); u8(cpu.D); u8(cpu.E); u8(cpu.F); u8(cpu.H); u8(cpu.L);
+    u16(cpu.PC); u16(cpu.SP);
+    bl(cpu.IME); bl(cpu.halted); bl(cpu.halt_bug); bl(cpu.ei_pending);
+    i32(cpu.cycles);
+
+    // Memory
+    raw(memory.data.data(), 0x10000);
+
+    // Timer
+    u16(timer.div_counter);
+    u8((uint8_t)timer.tima_state);
+
+    // PPU
+    i32(ppu.ppu_clock); i32(ppu.scanline); i32(ppu.mode);
+    i32(ppu.mode3_length); i32(ppu.mode3_start);
+    bl(ppu.first_line); bl(ppu.line0);
+    i32(ppu.line_wrap); i32(ppu.ly_delay); u8(ppu.ly_pending);
+    i32(ppu.frames); bl(ppu.frame_ready); bl(ppu.lcd_enabled);
+    i32(ppu.stat_pending); i32(ppu.stat_pending_mode); bl(ppu.stat_line);
+
+    // APU
+    auto sq = [&](const SquareChannel& c) {
+        bl(c.enabled); bl(c.dac_on); u8(c.duty);
+        u8(c.env_volume); u8(c.initial_volume); u8(c.env_period); bl(c.env_add);
+        u16(c.freq); i32(c.length); bl(c.length_enable);
+        u8(c.sweep_period); bl(c.sweep_negate); u8(c.sweep_shift); bl(c.sweep_on);
+        u16(c.shadow_freq); i32(c.sweep_timer); u16(c.timer); u8(c.duty_pos); i32(c.env_timer);
+    };
+    sq(apu.sq1); sq(apu.sq2);
+    bl(apu.wave.enabled); bl(apu.wave.dac_on); u8(apu.wave.volume_code);
+    u16(apu.wave.freq); i32(apu.wave.length); bl(apu.wave.length_enable);
+    u16(apu.wave.timer); u8(apu.wave.sample_index);
+    bl(apu.noise.enabled); bl(apu.noise.dac_on);
+    u8(apu.noise.env_volume); u8(apu.noise.initial_volume); u8(apu.noise.env_period); bl(apu.noise.env_add);
+    i32(apu.noise.length); bl(apu.noise.length_enable);
+    u8(apu.noise.divisor_code); bl(apu.noise.width_7); u8(apu.noise.shift);
+    u16(apu.noise.timer); u16(apu.noise.lfsr); i32(apu.noise.env_timer);
+    raw(apu.wave_ram, 16);
+    u8(apu.nr50); u8(apu.nr51); u8(apu.nr52);
+    i32(apu.frame_step); i32(apu.frame_timer);
+
+    // Cartridge (banking + RAM; ROM itself is reloaded from the file)
+    u8((uint8_t)cartridge.type);
+    bl(cartridge.ram_enabled);
+    u8(cartridge.rom_bank); u8(cartridge.bank_hi); u8(cartridge.ram_bank); u8(cartridge.mode);
+    i32(cartridge.ram_banks);
+    u32((uint32_t)cartridge.ram.size());
+    raw(cartridge.ram.data(), cartridge.ram.size());
+    u32((uint32_t)cartridge.mbc2_ram.size());
+    raw(cartridge.mbc2_ram.data(), cartridge.mbc2_ram.size());
+
+    // Input
+    bl(input.up); bl(input.down); bl(input.left); bl(input.right);
+    bl(input.a); bl(input.b); bl(input.select); bl(input.start);
+
+    fclose(f);
+    fprintf(stderr, "Saved state: %s\n", path.c_str());
+}
+
+static void load_state(const char* rom_path) {
+    std::string path = state_path(rom_path);
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) { fprintf(stderr, "load state failed (no such file): %s\n", path.c_str()); return; }
+
+    uint32_t magic = 0, version = 0;
+    fread(&magic, 4, 1, f);
+    fread(&version, 4, 1, f);
+    if (magic != 0x30534247u || version != 1) {
+        fclose(f);
+        fprintf(stderr, "load state failed (bad format): %s\n", path.c_str());
+        return;
+    }
+
+    auto u8  = [&](uint8_t&  v){ fread(&v,1,1,f); };
+    auto u16 = [&](uint16_t& v){ fread(&v,2,1,f); };
+    auto u32 = [&](uint32_t& v){ fread(&v,4,1,f); };
+    auto i32 = [&](int32_t&  v){ fread(&v,4,1,f); };
+    auto bl  = [&](bool& v){ uint8_t b; fread(&b,1,1,f); v = (b != 0); };
+    auto raw = [&](void* p, size_t n){ fread(p, n, 1, f); };
+
+    // CPU
+    i32(cpu.instr_cycle); i32(cpu.synced_cycle);
+    u8(cpu.A); u8(cpu.B); u8(cpu.C); u8(cpu.D); u8(cpu.E); u8(cpu.F); u8(cpu.H); u8(cpu.L);
+    u16(cpu.PC); u16(cpu.SP);
+    bl(cpu.IME); bl(cpu.halted); bl(cpu.halt_bug); bl(cpu.ei_pending);
+    i32(cpu.cycles);
+
+    // Memory
+    raw(memory.data.data(), 0x10000);
+
+    // Timer
+    u16(timer.div_counter);
+    uint8_t ts; u8(ts); timer.tima_state = (Timer::State)ts;
+
+    // PPU
+    i32(ppu.ppu_clock); i32(ppu.scanline); i32(ppu.mode);
+    i32(ppu.mode3_length); i32(ppu.mode3_start);
+    bl(ppu.first_line); bl(ppu.line0);
+    i32(ppu.line_wrap); i32(ppu.ly_delay); u8(ppu.ly_pending);
+    i32(ppu.frames); bl(ppu.frame_ready); bl(ppu.lcd_enabled);
+    i32(ppu.stat_pending); i32(ppu.stat_pending_mode); bl(ppu.stat_line);
+
+    // APU
+    auto sq = [&](SquareChannel& c) {
+        bl(c.enabled); bl(c.dac_on); u8(c.duty);
+        u8(c.env_volume); u8(c.initial_volume); u8(c.env_period); bl(c.env_add);
+        u16(c.freq); i32(c.length); bl(c.length_enable);
+        u8(c.sweep_period); bl(c.sweep_negate); u8(c.sweep_shift); bl(c.sweep_on);
+        u16(c.shadow_freq); i32(c.sweep_timer); u16(c.timer); u8(c.duty_pos); i32(c.env_timer);
+    };
+    sq(apu.sq1); sq(apu.sq2);
+    bl(apu.wave.enabled); bl(apu.wave.dac_on); u8(apu.wave.volume_code);
+    u16(apu.wave.freq); i32(apu.wave.length); bl(apu.wave.length_enable);
+    u16(apu.wave.timer); u8(apu.wave.sample_index);
+    bl(apu.noise.enabled); bl(apu.noise.dac_on);
+    u8(apu.noise.env_volume); u8(apu.noise.initial_volume); u8(apu.noise.env_period); bl(apu.noise.env_add);
+    i32(apu.noise.length); bl(apu.noise.length_enable);
+    u8(apu.noise.divisor_code); bl(apu.noise.width_7); u8(apu.noise.shift);
+    u16(apu.noise.timer); u16(apu.noise.lfsr); i32(apu.noise.env_timer);
+    raw(apu.wave_ram, 16);
+    u8(apu.nr50); u8(apu.nr51); u8(apu.nr52);
+    i32(apu.frame_step); i32(apu.frame_timer);
+    apu.sample_count = 0;
+    apu.sample_acc = 0.0f;
+
+    // Cartridge
+    uint8_t ct; u8(ct); cartridge.type = (Cartridge::Type)ct;
+    bl(cartridge.ram_enabled);
+    u8(cartridge.rom_bank); u8(cartridge.bank_hi); u8(cartridge.ram_bank); u8(cartridge.mode);
+    i32(cartridge.ram_banks);
+    uint32_t ram_size; u32(ram_size);
+    cartridge.ram.resize(ram_size);
+    raw(cartridge.ram.data(), ram_size);
+    uint32_t mbc2_size; u32(mbc2_size);
+    cartridge.mbc2_ram.resize(mbc2_size);
+    raw(cartridge.mbc2_ram.data(), mbc2_size);
+
+    // Input
+    bl(input.up); bl(input.down); bl(input.left); bl(input.right);
+    bl(input.a); bl(input.b); bl(input.select); bl(input.start);
+
+    fclose(f);
+    fprintf(stderr, "Loaded state: %s\n", path.c_str());
+}
+
 int main(int argc, char** argv) {
     const char* rom_path = "bgbtest.gb";
     uint64_t max_cycles = 0; // 0 = run forever (non-headless)
@@ -280,8 +459,13 @@ int main(int argc, char** argv) {
         if (!g_headless) {
             while (SDL_PollEvent(&e)) {
                 if (e.type == SDL_QUIT) running = false;
-                if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
-                    input.key_event(e.key.keysym.sym, e.type == SDL_KEYDOWN);
+                if (e.type == SDL_KEYDOWN) {
+                    if (e.key.keysym.sym == SDLK_F5) { save_state(rom_path); }
+                    else if (e.key.keysym.sym == SDLK_F7) { load_state(rom_path); }
+                    else input.key_event(e.key.keysym.sym, true);
+                } else if (e.type == SDL_KEYUP) {
+                    input.key_event(e.key.keysym.sym, false);
+                }
             }
         }
 

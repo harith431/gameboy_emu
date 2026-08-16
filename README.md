@@ -52,6 +52,7 @@ Test ROM serial output (blargg/mooneye) is printed to stdout.
 | X (or J) | B |
 | Enter / Space | Start |
 | Left/Right Shift | Select |
+| F5 / F7 | Save / Load state |
 
 ---
 
@@ -77,7 +78,7 @@ Test ROM serial output (blargg/mooneye) is printed to stdout.
 - [ ] MBC3 RTC (real-time clock)
 - [ ] Audio (APU) - Square waves, wave, noise
 - [ ] Cycle-accurate PPU timing (STAT interrupts, mode timing)
-- [ ] Save states
+- [x] Save states (F5 save, F7 load)
 - [ ] Debugger with breakpoints
 - [ ] GBC support (SM83 double-speed mode)
 
