@@ -272,6 +272,11 @@ static void save_state(const char* rom_path) {
     raw(cartridge.ram.data(), cartridge.ram.size());
     u32((uint32_t)cartridge.mbc2_ram.size());
     raw(cartridge.mbc2_ram.data(), cartridge.mbc2_ram.size());
+    // MBC3 RTC
+    bl(cartridge.rtc_enabled); bl(cartridge.rtc_mapped); u8(cartridge.rtc_select);
+    raw(cartridge.rtc_regs, 5);
+    uint64_t rtc_s = cartridge.rtc_seconds, rtc_t = cartridge.rtc_last_sync;
+    raw(&rtc_s, 8); raw(&rtc_t, 8);
 
     // Input
     bl(input.up); bl(input.down); bl(input.left); bl(input.right);
@@ -358,6 +363,10 @@ static void load_state(const char* rom_path) {
     uint32_t mbc2_size; u32(mbc2_size);
     cartridge.mbc2_ram.resize(mbc2_size);
     raw(cartridge.mbc2_ram.data(), mbc2_size);
+    // MBC3 RTC
+    bl(cartridge.rtc_enabled); bl(cartridge.rtc_mapped); u8(cartridge.rtc_select);
+    raw(cartridge.rtc_regs, 5);
+    raw(&cartridge.rtc_seconds, 8); raw(&cartridge.rtc_last_sync, 8);
 
     // Input
     bl(input.up); bl(input.down); bl(input.left); bl(input.right);

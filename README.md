@@ -12,7 +12,7 @@ A C++ Game Boy (DMG-01) emulator using SDL3 for cross-platform rendering.
 - ✅ Input/joypad via SDL keyboard events
 - ✅ Timer (DIV/TIMA/TMA/TAC) — cycle-accurate; all mooneye timer tests pass
 - ✅ Interrupt handling (VBlank, STAT, Timer, Joypad)
-- ✅ MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) — mooneye MBC tests pass
+- ✅ MBC1 / MBC2 / MBC5 / MBC3 (banking + RTC) — mooneye MBC tests pass
 - ✅ OAM DMA
 - ⚠️ PPU timing is scanline-based (mem_timing / oam_bug tests fail)
 - ✅ Audio (APU): square 1/2, wave, noise + frame sequencer, SDL output
@@ -74,8 +74,8 @@ Test ROM serial output (blargg/mooneye) is printed to stdout.
 ---
 
 ## 🎯 Roadmap
-- [x] MBC1/MBC2/MBC5 support (and MBC3 banking, no RTC)
-- [ ] MBC3 RTC (real-time clock)
+- [x] MBC1/MBC2/MBC5 support (and MBC3 banking + RTC)
+- [x] MBC3 RTC (real-time clock)
 - [ ] Audio (APU) - Square waves, wave, noise
 - [ ] Cycle-accurate PPU timing (STAT interrupts, mode timing)
 - [x] Save states (F5 save, F7 load)

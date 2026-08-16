@@ -44,7 +44,7 @@ Passing (50/50 in `run_tests.sh`):
 |-----------|--------|
 | CPU (all opcodes incl. CB, flags, interrupts) | ✅ blargg `cpu_instrs` + `instr_timing` pass |
 | Timer (cycle-accurate, reload delay, DIV/TAC glitches) | ✅ 10/10 mooneye timer tests |
-| MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) | ✅ mooneye MBC tests |
+| MBC1 / MBC2 / MBC5 / MBC3 (banking + RTC) | ✅ mooneye MBC tests |
 | PPU (background / window / sprites) | ⚠️ per-T-cycle mode timing + CPU interleave; 9/12 mooneye PPU tests |
 | APU | ✅ functional (4 channels + frame sequencer, SDL audio); not blargg-verified |
 | Serial | ⚠️ output-only (enough for test ROMs) |

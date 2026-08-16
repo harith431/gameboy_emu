@@ -33,7 +33,7 @@ The goal is cycle-accurate emulation of the original hardware.
 - **input.h** - Joypad register and SDL keyboard mapping
 - **timer.h** - DIV/TIMA/TMA/TAC timer (cycle-accurate: shared divider, TIMA
   reload delay, DIV/TAC write glitches)
-- **mbc.h** - Memory Bank Controllers: MBC1, MBC2, MBC3 (no RTC), MBC5
+- **mbc.h** - Memory Bank Controllers: MBC1, MBC2, MBC3 (with RTC), MBC5
 - **opcodes.json** - Complete JSON metadata for all 512 unprefixed + 256 CB-prefixed opcodes
 - **main.cpp** - ROM loading, CPU fetch-decode-execute loop, main emulator loop
 
@@ -87,7 +87,7 @@ cmake --build .
 ```
 
 ## Known Limitations
-- No MBC3 real-time clock (RTC); MBC3 banking works, RTC does not
+- MBC3 real-time clock (RTC) implemented
 - No MBC1 multicart mode (not detectable from the header)
 - No audio (APU)
 - No serial link (only serial output for test ROMs)

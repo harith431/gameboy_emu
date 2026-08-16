@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <cstdio>
+#include <ctime>
 
 // Memory Bank Controller emulation: MBC1, MBC2, MBC3 (no RTC) and MBC5.
 //
@@ -25,6 +26,14 @@ struct Cartridge {
     uint8_t ram_bank = 0;   // MBC3/MBC5: RAM bank (0-15)
     uint8_t mode = 0;       // MBC1 banking mode (0 = ROM, 1 = RAM)
     int ram_banks = 0;
+
+    // MBC3 real-time clock
+    bool rtc_enabled = false;
+    bool rtc_mapped = false;     // RTC (vs RAM) mapped to 0xA000-0xBFFF
+    uint8_t rtc_select = 0;      // 0-4: sec, min, hour, day_lo, day_hi
+    uint8_t rtc_regs[5] = {0};   // latched/current RTC register values
+    uint64_t rtc_seconds = 0;    // total seconds (running clock)
+    uint64_t rtc_last_sync = 0;  // wall clock (time()) at last sync
 
     void load(const std::vector<uint8_t>& data, uint8_t cart_type) {
         rom = data;
@@ -50,6 +59,14 @@ struct Cartridge {
                 has_battery = true; break;
             default: has_battery = false; break;
         }
+
+        // MBC3 real-time clock (types 0x0F and 0x10).
+        rtc_enabled = (cart_type == 0x0F || cart_type == 0x10);
+        rtc_mapped = false;
+        rtc_select = 0;
+        for (int i = 0; i < 5; i++) rtc_regs[i] = 0;
+        rtc_seconds = 0;
+        rtc_last_sync = (uint64_t)time(nullptr);
 
         uint8_t ramsize = rom.size() > 0x149 ? rom[0x149] : 0;
         switch (ramsize) {
@@ -139,9 +156,12 @@ struct Cartridge {
                     rom_bank = value & 0x7F;
                     if (rom_bank == 0) rom_bank = 1;
                 } else if (addr < 0x6000) {
-                    ram_bank = value & 0x0F; // RTC register select ignored
+                    ram_bank = value & 0x0F;
+                    rtc_mapped = rtc_enabled && (value & 0x08) != 0;
+                    rtc_select = value & 0x07;
                 } else {
-                    // RTC latch ignored
+                    // RTC latch: copy the running time into the readable regs.
+                    if (rtc_enabled) rtc_latch();
                 }
                 break;
 
@@ -172,6 +192,7 @@ struct Cartridge {
     }
 
     uint8_t read_ram(uint16_t addr) {
+        if (type == MBC3 && rtc_mapped && rtc_enabled) return read_rtc();
         if (type == MBC2) {
             if (!ram_enabled) return 0xFF;
             uint16_t off = (addr - 0xA000) & 0x1FF; // 512 nibbles, wraps
@@ -184,6 +205,7 @@ struct Cartridge {
     }
 
     void write_ram(uint16_t addr, uint8_t value) {
+        if (type == MBC3 && rtc_mapped && rtc_enabled) { write_rtc(value); return; }
         if (type == MBC2) {
             if (!ram_enabled) return;
             uint16_t off = (addr - 0xA000) & 0x1FF; // 512 nibbles, wraps
@@ -196,6 +218,52 @@ struct Cartridge {
         ram[off] = value;
     }
 
+    // ---- MBC3 real-time clock ----
+
+    void rtc_latch() {
+        uint64_t total = rtc_seconds;
+        if (!(rtc_regs[4] & 0x40)) {  // not halted: add elapsed wall time
+            total += (uint64_t)time(nullptr) - rtc_last_sync;
+        }
+        uint64_t days = total / 86400;
+        uint8_t hi = rtc_regs[4] & 0xC0;  // preserve halt + carry flags
+        if (days > 511) hi |= 0x80;       // day counter carry
+        hi |= (days >> 8) & 1;            // day bit 8
+        rtc_regs[0] = total % 60;
+        rtc_regs[1] = (total / 60) % 60;
+        rtc_regs[2] = (total / 3600) % 24;
+        rtc_regs[3] = days & 0xFF;
+        rtc_regs[4] = hi;
+    }
+
+    void rtc_sync_from_regs() {
+        uint64_t days = ((uint64_t)(rtc_regs[4] & 1) << 8) | rtc_regs[3];
+        rtc_seconds = days * 86400 + (uint64_t)rtc_regs[2] * 3600
+                    + (uint64_t)rtc_regs[1] * 60 + rtc_regs[0];
+        rtc_last_sync = (uint64_t)time(nullptr);
+    }
+
+    uint8_t read_rtc() const {
+        if (rtc_select >= 5) return 0xFF;
+        uint8_t v = rtc_regs[rtc_select];
+        if (rtc_select == 0 || rtc_select == 1) v &= 0x3F; // sec/min 0-59
+        else if (rtc_select == 2) v &= 0x1F;               // hour 0-23
+        else if (rtc_select == 4) v &= 0xC1;               // carry|halt|day8
+        return v;
+    }
+
+    void write_rtc(uint8_t value) {
+        if (rtc_select >= 5) return;
+        switch (rtc_select) {
+            case 0: rtc_regs[0] = value & 0x3F; break;
+            case 1: rtc_regs[1] = value & 0x3F; break;
+            case 2: rtc_regs[2] = value & 0x1F; break;
+            case 3: rtc_regs[3] = value; break;
+            case 4: rtc_regs[4] = value & 0xC1; break; // carry, halt, day bit 8
+        }
+        rtc_sync_from_regs();
+    }
+
     // Load/save battery-backed RAM (.sav file). Returns true on successful load.
     bool load_ram_file(const char* path) {
         FILE* f = fopen(path, "rb");
@@ -205,6 +273,11 @@ struct Cartridge {
             fread(mbc2_ram.data(), 1, 512, f);
         } else if (!ram.empty()) {
             fread(ram.data(), 1, ram.size(), f);
+        }
+        if (rtc_enabled && fread(rtc_regs, 1, 5, f) == 5) {
+            fread(&rtc_seconds, 8, 1, f);
+            fread(&rtc_last_sync, 8, 1, f);
+            if (rtc_last_sync == 0) rtc_last_sync = (uint64_t)time(nullptr);
         }
         fclose(f);
         return true;
@@ -217,6 +290,11 @@ struct Cartridge {
             fwrite(mbc2_ram.data(), 1, mbc2_ram.size(), f);
         } else if (!ram.empty()) {
             fwrite(ram.data(), 1, ram.size(), f);
+        }
+        if (rtc_enabled) {
+            fwrite(rtc_regs, 1, 5, f);
+            fwrite(&rtc_seconds, 8, 1, f);
+            fwrite(&rtc_last_sync, 8, 1, f);
         }
         fclose(f);
     }
