@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <SDL2/SDL_keycode.h>
 
 struct Input {
     bool up = false, down = false, left = false, right = false;
@@ -7,16 +8,17 @@ struct Input {
 
     void key_event(int keycode, bool pressed) {
         switch (keycode) {
-            case 1073741906: up = pressed; break;     // SDLK_UP
-            case 1073741905: down = pressed; break;   // SDLK_DOWN
-            case 1073741904: left = pressed; break;   // SDLK_LEFT
-            case 1073741903: right = pressed; break;  // SDLK_RIGHT
-            case 122: a = pressed; break;             // Z
-            case 120: b = pressed; break;             // X
-            case 1073742054: select = pressed; break; // RSHIFT
-            case 1073742049: select = pressed; break; // LSHIFT
-            case 13: start = pressed; break;          // ENTER
-            case 32: start = pressed; break;          // SPACE
+            // D-pad: arrow keys (primary) and WASD (alternative)
+            case SDLK_UP:    case SDLK_w: up = pressed;    break;
+            case SDLK_DOWN:  case SDLK_s: down = pressed;  break;
+            case SDLK_LEFT:  case SDLK_a: left = pressed;  break;
+            case SDLK_RIGHT: case SDLK_d: right = pressed; break;
+            // Buttons: Z = A, X = B (Nintendo-style)
+            case SDLK_z: case SDLK_k: a = pressed; break;
+            case SDLK_x: case SDLK_j: b = pressed; break;
+            // Start / Select
+            case SDLK_RETURN: case SDLK_SPACE: start = pressed;  break;
+            case SDLK_LSHIFT: case SDLK_RSHIFT: select = pressed; break;
             default: break;
         }
     }

@@ -15,7 +15,7 @@ A C++ Game Boy (DMG-01) emulator using SDL3 for cross-platform rendering.
 - ✅ MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) — mooneye MBC tests pass
 - ✅ OAM DMA
 - ⚠️ PPU timing is scanline-based (mem_timing / oam_bug tests fail)
-- ❌ Audio (APU)
+- ✅ Audio (APU): square 1/2, wave, noise + frame sequencer, SDL output
 - ❌ Serial link (output-only for test ROMs)
 
 ---
@@ -47,11 +47,11 @@ Test ROM serial output (blargg/mooneye) is printed to stdout.
 ### Controls
 | Key | Game Boy Button |
 |-----|----------------|
-| Arrow keys | D-Pad |
-| Z | A |
-| X | B |
-| Enter | Start |
-| Right Shift | Select |
+| Arrow keys (or WASD) | D-Pad |
+| Z (or K) | A |
+| X (or J) | B |
+| Enter / Space | Start |
+| Left/Right Shift | Select |
 
 ---
 

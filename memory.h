@@ -21,6 +21,8 @@ public:
     void (*tac_write_cb)(uint8_t) = nullptr;
     void (*lyc_write_cb)(uint8_t) = nullptr;
     void (*stat_write_cb)(uint8_t) = nullptr;
+    uint8_t (*apu_read_cb)(uint16_t) = nullptr;
+    void (*apu_write_cb)(uint16_t, uint8_t) = nullptr;
 
     // Cartridge (MBC) hooks: ROM window and external RAM.
     uint8_t (*cart_read_cb)(uint16_t) = nullptr;
@@ -50,6 +52,7 @@ public:
         if (addr == 0xFF0F) return data[addr] | 0xE0;                 // IF: bits 5-7 read 1
         if (addr == 0xFF41) return data[addr] | 0x80;                 // STAT: bit 7 reads 1
         if (addr >= 0xE000 && addr <= 0xFDFF) return data[addr - 0x2000]; // Echo RAM
+        if (addr >= 0xFF10 && addr <= 0xFF3F && apu_read_cb) return apu_read_cb(addr);
         return data[addr];
     }
 
@@ -77,6 +80,12 @@ public:
             int m = ppu_write_mode_cb();
             if (addr >= 0x8000 && addr <= 0x9FFF && m == 3) return;
             if (addr >= 0xFE00 && addr <= 0xFE9F && (m == 2 || m == 3)) return;
+        }
+
+        // APU registers (NR10-NR52 + wave RAM)
+        if (addr >= 0xFF10 && addr <= 0xFF3F) {
+            if (apu_write_cb) apu_write_cb(addr, value);
+            return;
         }
 
         switch (addr) {

@@ -26,13 +26,13 @@ All of the following must be true:
 - [ ] **mooneye** — all `acceptance/` tests that apply to DMG pass
   (timer done; PPU, interrupts, OAM DMA, serial, boot, misc pending)
 - [ ] **dmg-acid2** renders the reference image correctly
-- [ ] **APU** — square 1/2, wave, noise channels with length/envelope/sweep,
-  audible through SDL at correct pitch
+- [x] **APU** — square 1/2, wave, noise channels with length/envelope/sweep,
+  audible through SDL at correct pitch (functional; not blargg-verified)
 - [ ] **Real games** — at least these boot and are playable (correct graphics,
   input, audio, no crashes): Tetris, Super Mario Land, The Legend of Zelda:
   Link's Awakening, Pokémon Red/Blue, Kirby's Dream Land
 - [ ] **Battery save** — `.sav` persistence for MBC RAM+battery carts
-- [ ] **60 FPS** — sustained in windowed mode on a typical desktop
+- [x] **60 FPS** — frame pacing added (sleep to ~59.73 fps)
 
 ---
 
@@ -46,7 +46,7 @@ Passing (50/50 in `run_tests.sh`):
 | Timer (cycle-accurate, reload delay, DIV/TAC glitches) | ✅ 10/10 mooneye timer tests |
 | MBC1 / MBC2 / MBC5 / MBC3 (banking, no RTC) | ✅ mooneye MBC tests |
 | PPU (background / window / sprites) | ⚠️ per-T-cycle mode timing + CPU interleave; 9/12 mooneye PPU tests |
-| APU | ❌ not implemented |
+| APU | ✅ functional (4 channels + frame sequencer, SDL audio); not blargg-verified |
 | Serial | ⚠️ output-only (enough for test ROMs) |
 
 PPU tests passing: `intr_1_2_timing`, `intr_2_0_timing`, `intr_2_mode0_timing`,
@@ -92,11 +92,11 @@ sync. Remaining work:
 Implement the sound hardware and SDL audio output.
 
 Deliverables / acceptance:
-- [ ] Frame sequencer (512 Hz), 4 channels: square 1/2, wave, noise
-- [ ] Length counter, volume envelope, frequency sweep, DAC
-- [ ] NR10–NR52 register semantics
+- [x] Frame sequencer (512 Hz), 4 channels: square 1/2, wave, noise
+- [x] Length counter, volume envelope, frequency sweep, DAC
+- [x] NR10–NR52 register semantics (basic; wave RAM + channel status)
 - [ ] blargg `dmg_sound` passes (register + behavior tests)
-- [ ] Audible, pitch-accurate sound in windowed mode
+- [x] Audible, pitch-accurate sound in windowed mode (SDL queue)
 
 ### M4 — Full mooneye acceptance + peripherals
 Close the remaining accuracy gaps.

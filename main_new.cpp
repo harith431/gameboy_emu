@@ -3,6 +3,8 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <chrono>
+#include <thread>
 #include "memory.h"
 #include "cpu_new.h"
 #include "PPU.h"
@@ -10,12 +12,14 @@
 #include "input.h"
 #include "timer.h"
 #include "mbc.h"
+#include "apu.h"
 
 Memory memory;
 PPU ppu;
 Input input;
 Timer timer;
 Cartridge cartridge;
+APU apu;
 uint8_t framebuffer[144][160];
 bool g_headless = false;
 
@@ -25,6 +29,7 @@ void tick_components(int n) {
     if (n <= 0) return;
     timer.step(n);
     ppu.step(n);
+    if (!g_headless) apu.step(n);
 }
 
 static void init_fake_bios() {
@@ -202,6 +207,8 @@ int main(int argc, char** argv) {
     memory.tac_write_cb  = [](uint8_t v) { timer.write_tac(v); };
     memory.lyc_write_cb  = [](uint8_t v) { ppu.write_lyc(v); };
     memory.stat_write_cb = [](uint8_t v) { ppu.write_stat(v); };
+    memory.apu_read_cb   = [](uint16_t a) { return apu.read(a); };
+    memory.apu_write_cb  = [](uint16_t a, uint8_t v) { apu.write(a, v); };
     // Bus blocking follows the STAT-delayed mode (the same signal the STAT
     // register's mode bits report), so OAM/VRAM accessibility matches STAT
     // mode timing exactly (mooneye intr_2_oam_ok_timing).
@@ -237,7 +244,30 @@ int main(int argc, char** argv) {
         if (g_headless) return 1;
     }
 
-    if (!g_headless) init_video();
+    SDL_AudioDeviceID audio_dev = 0;
+    if (!g_headless) {
+        init_video();
+
+        // Audio (APU): queue-generated mono 16-bit samples.
+        SDL_InitSubSystem(SDL_INIT_AUDIO);
+        SDL_AudioSpec want = {};
+        want.freq = APU::SAMPLE_RATE;
+        want.format = AUDIO_S16SYS;
+        want.channels = 1;
+        want.samples = 2048;
+        audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, nullptr, 0);
+        if (audio_dev) {
+            // Prime a little silence to avoid an initial underrun.
+            int16_t silence[2048] = {0};
+            SDL_QueueAudio(audio_dev, silence, sizeof(silence));
+            SDL_PauseAudioDevice(audio_dev, 0);
+        }
+    }
+
+    // Frame pacing: the Game Boy renders at ~59.73 fps.
+    using steady_clock = std::chrono::steady_clock;
+    auto frame_interval = std::chrono::duration<double>(70224.0 / 4194304.0);
+    auto next_frame = steady_clock::now() + frame_interval;
 
     // cpu_instrs (DMG) needs ~55 emulated seconds = ~230M cycles.
     if (g_headless && max_cycles == 0) max_cycles = 250000000;
@@ -283,10 +313,23 @@ int main(int argc, char** argv) {
         total_cycles += cyc;
         cpu.cycles = 0;
 
+        // A frame just finished: drain audio and pace to real time.
+        if (!g_headless && ppu.frame_ready) {
+            ppu.frame_ready = false;
+            if (audio_dev && apu.sample_count > 0) {
+                SDL_QueueAudio(audio_dev, apu.samples, apu.sample_count * sizeof(int16_t));
+                apu.sample_count = 0;
+            }
+            std::this_thread::sleep_until(next_frame);
+            next_frame += frame_interval;
+        }
+
         if (g_headless && total_cycles >= max_cycles) {
             running = false;
         }
     }
+
+    if (audio_dev) SDL_CloseAudioDevice(audio_dev);
 
     if (screenshot_path) write_bmp(screenshot_path, framebuffer);
     if (!g_headless) cleanup_video();

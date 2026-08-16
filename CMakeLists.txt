@@ -24,6 +24,7 @@ set(HEADERS
     video.h
     input.h
     timer.h
+    apu.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
