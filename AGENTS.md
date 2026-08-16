@@ -24,18 +24,21 @@ The goal is cycle-accurate emulation of the original hardware.
 
 ## Architecture
 
-### Components
-- **CPU.h** - SM83 (LR35902) processor emulation: registers, flags, interrupt state
-- **memory.h** - 64KB address space with ROM write-protection and proper IF masking
-- **PPU.h** - Pixel Processing Unit: scanline rendering, background/window/sprites, STAT interrupts
-- **PPU.cpp** - PPU instantiation (logic in PPU.h inline)
-- **video.h / video.cpp** - SDL3 rendering (160×144 scaled framebuffer)
-- **input.h** - Joypad register and SDL keyboard mapping
-- **timer.h** - DIV/TIMA/TMA/TAC timer (cycle-accurate: shared divider, TIMA
-  reload delay, DIV/TAC write glitches)
-- **mbc.h** - Memory Bank Controllers: MBC1, MBC2, MBC3 (with RTC), MBC5
-- **opcodes.json** - Complete JSON metadata for all 512 unprefixed + 256 CB-prefixed opcodes
-- **main.cpp** - ROM loading, CPU fetch-decode-execute loop, main emulator loop
+Code lives under `src/`, organized by subsystem:
+
+- **core/cpu.cpp/.h** - SM83 (LR35902) CPU: registers, flags, interrupts, HALT bug
+- **core/memory.h** - 64KB address space + MMIO routing + bus blocking
+- **ppu/ppu.h/.cpp** - Pixel Processing Unit: mode timing, sprite FIFO, OAM bug
+- **ppu/video.h/.cpp** - SDL2 window/texture (160×144)
+- **apu/apu.h** - APU: square 1/2, wave, noise + frame sequencer
+- **cart/mbc.h** - Memory Bank Controllers: MBC1, MBC2, MBC3 (with RTC), MBC5
+- **timer/timer.h** - DIV/TIMA/TMA/TAC timer (cycle-accurate: shared divider,
+  TIMA reload delay, DIV/TAC write glitches)
+- **input/input.h** - Joypad register and SDL keyboard mapping
+- **main.cpp** - ROM loading, wiring, main loop, frame pacing, save states
+
+`legacy/` holds the first-iteration scaffolding (`main.cpp`, `CPU.h`,
+`opcodes.json`) — not part of the build.
 
 ### Memory Map
 | Range | Description |

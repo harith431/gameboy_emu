@@ -91,22 +91,31 @@ cmake --build .
 
 ## 📁 Project structure
 
-| File | Role |
-|------|------|
-| `cpu_new.cpp/.h` | SM83 CPU — one instruction per `step()`, per-access bus sync |
-| `memory.h` | 64 KB address space + MMIO routing + bus blocking |
-| `PPU.h` | Pixel pipeline, mode timing, sprite FIFO, OAM bug |
-| `timer.h` | cycle-accurate timer (shared divider, reload state machine) |
-| `apu.h` | 4-channel audio + frame sequencer |
-| `mbc.h` | MBC1/2/3/5 banking + external RAM + RTC |
-| `video.cpp/.h` | SDL2 window/texture |
-| `input.h` | joypad + keyboard |
-| `main_new.cpp` | wiring, main loop, frame pacing, save states |
-| `GOALS.md` | milestones + test scoreboard |
-| `AGENTS.md` | architecture notes for coding agents |
+```
+src/
+├── core/
+│   ├── cpu.cpp/.h   # SM83 CPU — one instruction per step(), per-access bus sync
+│   └── memory.h     # 64 KB address space + MMIO routing + bus blocking
+├── ppu/
+│   ├── ppu.h/.cpp   # pixel pipeline, mode timing, sprite FIFO, OAM bug
+│   └── video.h/.cpp # SDL2 window/texture
+├── apu/
+│   └── apu.h        # 4-channel audio + frame sequencer
+├── cart/
+│   └── mbc.h        # MBC1/2/3/5 banking + external RAM + RTC
+├── timer/
+│   └── timer.h      # cycle-accurate timer (shared divider, reload state machine)
+├── input/
+│   └── input.h      # joypad + keyboard
+└── main.cpp         # wiring, main loop, frame pacing, save states
 
-`main.cpp` / `CPU.h` / `opcodes.json` are legacy scaffolding from the first
-iteration and no longer drive the build.
+legacy/              # first-iteration scaffolding (not built)
+├── main.cpp
+├── CPU.h
+└── opcodes.json
+```
+
+Plus `GOALS.md` (milestones + scoreboard) and `AGENTS.md` (architecture notes).
 
 ---
 

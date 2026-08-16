@@ -6,14 +6,14 @@
 #include <string>
 #include <chrono>
 #include <thread>
-#include "memory.h"
-#include "cpu_new.h"
-#include "PPU.h"
-#include "video.h"
-#include "input.h"
-#include "timer.h"
-#include "mbc.h"
-#include "apu.h"
+#include "core/memory.h"
+#include "core/cpu.h"
+#include "ppu/ppu.h"
+#include "ppu/video.h"
+#include "input/input.h"
+#include "timer/timer.h"
+#include "cart/mbc.h"
+#include "apu/apu.h"
 
 Memory memory;
 PPU ppu;

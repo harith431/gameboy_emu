@@ -1,9 +1,9 @@
 #pragma once
 #include <stdio.h>
 #include <cstdint>
-#include "memory.h"
-#include "cpu_new.h"
-#include "video.h"
+#include "core/memory.h"
+#include "core/cpu.h"
+#include "ppu/video.h"
 
 #ifndef DBG
 #define DBG(...) ((void)0)
