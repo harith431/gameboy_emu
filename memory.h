@@ -152,17 +152,19 @@ private:
         uint8_t select = data[0xFF00] & 0x30;
         uint8_t buttons = 0x0F;
 
-        if (!(select & 0x10)) { // P14 low -> action buttons
-            if (input.a)      buttons &= ~0x01;
-            if (input.b)      buttons &= ~0x02;
-            if (input.select) buttons &= ~0x04;
-            if (input.start)  buttons &= ~0x08;
-        }
-        if (!(select & 0x20)) { // P15 low -> direction buttons
+        // P14 (bit 4) selects the D-pad; P15 (bit 5) selects the buttons.
+        // Bits 0-3 are active-low: Right/A=bit0, Left/B=bit1, Up/Select=bit2, Down/Start=bit3.
+        if (!(select & 0x10)) { // P14 low -> direction keys
             if (input.right) buttons &= ~0x01;
             if (input.left)  buttons &= ~0x02;
             if (input.up)    buttons &= ~0x04;
             if (input.down)  buttons &= ~0x08;
+        }
+        if (!(select & 0x20)) { // P15 low -> button keys
+            if (input.a)      buttons &= ~0x01;
+            if (input.b)      buttons &= ~0x02;
+            if (input.select) buttons &= ~0x04;
+            if (input.start)  buttons &= ~0x08;
         }
         return 0xC0 | select | buttons;
     }
