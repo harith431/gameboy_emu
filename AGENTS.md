@@ -4,6 +4,20 @@
 > definition of "working emulator". Work through its milestones in order and
 > run `./run_tests.sh` after every change (no regressions).
 
+## Thinking level & model guidance
+
+> Pi's thinking level is a **harness setting** (Shift+Tab to cycle, `/thinking`
+> to set); the agent cannot switch it itself. This project has two tiers —
+> pick the right one per task.
+
+| Task type | Thinking level |
+|-----------|----------------|
+| Routine edits, docs, refactors, running `./run_tests.sh`, simple one-line fixes | `low`–`medium` |
+| Cycle-accurate timing (PPU/APU/timer), MBC/banking edge cases, blargg or mooneye failures, subtle glitches, save/load correctness | `high` |
+
+If a task falls in the `high` tier, say **"this needs high thinking"** up front
+so the human can bump it (Shift+Tab) before the expensive debugging begins.
+
 ## Project Overview
 A C++ Game Boy (DMG-01) emulator targeting cross-platform desktop with SDL3.
 The goal is cycle-accurate emulation of the original hardware.
