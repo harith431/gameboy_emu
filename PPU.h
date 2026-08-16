@@ -18,6 +18,8 @@ struct PPU {
     int scanline = 0;    // LY
     int mode = 2;        // 0=HBlank 1=VBlank 2=OAM scan 3=transfer
     int mode3_length = 172; // length of the current mode-3 phase (dots)
+    int mode3_start = 80;   // dot at which mode 3 begins (75 on the first line)
+    bool first_line = false; // true for the very first line after LCD-on
     int frames = 0;
     bool frame_ready = false;
     bool lcd_enabled = false;
@@ -229,6 +231,8 @@ struct PPU {
                 memory.data[0xFF44] = 0x00;
                 update_lyc();
                 set_mode_immediate(0);
+                mode3_start = 75; // first line: mode 3 starts 5 dots early
+                first_line = true;
             }
         }
 
@@ -265,17 +269,19 @@ struct PPU {
                     if (!g_headless) render_frame(framebuffer);
                 } else if (scanline < 144) {
                     set_mode(2); // visible scanline starts in OAM-scan mode
+                    mode3_start = 80; // normal lines: mode 3 at dot 80
                 }
                 // scanlines 145-153 remain in mode 1
             } else if (scanline < 144) {
-                if (ppu_clock == 80) {
+                if (ppu_clock == mode3_start) {
                     set_mode(3); // OAM scan -> transfer
                     // Mode-3 length varies with SCX alignment and sprites.
                     // No-sprites case (DMG): 172 + 4*ceil((SCX&7)/4).
                     int scx = memory.read(0xFF43) & 7;
                     int scx_penalty = (scx ? 4 : 0) + (scx >= 5 ? 4 : 0);
                     mode3_length = 172 + scx_penalty + compute_mode3_length();
-                } else if (ppu_clock == 80 + mode3_length) {
+                    first_line = false;
+                } else if (ppu_clock == mode3_start + mode3_length) {
                     set_mode(0); // transfer -> HBlank
                 }
             }
