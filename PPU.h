@@ -20,6 +20,10 @@ struct PPU {
     int mode3_length = 172; // length of the current mode-3 phase (dots)
     int mode3_start = 80;   // dot at which mode 3 begins (75 on the first line)
     bool first_line = false; // true for the very first line after LCD-on
+    bool line0 = false;      // true while rendering the first line after LCD-on
+    int line_wrap = 456;     // dot at which the scanline wraps (452 on line 0)
+    int ly_delay = 0;        // remaining dots before the delayed LY write
+    uint8_t ly_pending = 0;  // LY value to write once ly_delay expires
     int frames = 0;
     bool frame_ready = false;
     bool lcd_enabled = false;
@@ -233,6 +237,8 @@ struct PPU {
                 set_mode_immediate(0);
                 mode3_start = 75; // first line: mode 3 starts 5 dots early
                 first_line = true;
+                line0 = true;
+                line_wrap = 452;  // first line is 4 dots short
             }
         }
 
@@ -240,8 +246,12 @@ struct PPU {
 
         while (cycles-- > 0) {
             run_pending_mode();
+            if (ly_delay > 0 && --ly_delay == 0) {
+                memory.data[0xFF44] = ly_pending;
+                update_lyc();
+            }
             ppu_clock++;
-            if (ppu_clock >= 456) {
+            if (ppu_clock >= line_wrap) {
                 ppu_clock = 0;
 
                 // Render the scanline that just finished.
@@ -256,8 +266,18 @@ struct PPU {
                     scanline = 0;
                     frames++;
                 }
-                memory.data[0xFF44] = static_cast<uint8_t>(scanline);
-                update_lyc();
+
+                // The LY register normally updates immediately, but on the
+                // very first line after LCD-on the update is delayed by 4
+                // dots when LYC != 0 (the PPU is "late by 2 T-cycles").
+                if (line0 && memory.data[0xFF45] != 0) {
+                    ly_delay = 4;
+                    ly_pending = static_cast<uint8_t>(scanline);
+                } else {
+                    memory.data[0xFF44] = static_cast<uint8_t>(scanline);
+                    update_lyc();
+                }
+                line0 = false;
 
                 if (scanline == 144) {
                     // Enter VBlank: VBlank interrupt + STAT mode-1 interrupt.
@@ -270,6 +290,7 @@ struct PPU {
                 } else if (scanline < 144) {
                     set_mode(2); // visible scanline starts in OAM-scan mode
                     mode3_start = 80; // normal lines: mode 3 at dot 80
+                    line_wrap = 456;  // normal lines: 456 dots
                 }
                 // scanlines 145-153 remain in mode 1
             } else if (scanline < 144) {

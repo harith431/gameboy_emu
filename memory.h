@@ -28,9 +28,12 @@ public:
     uint8_t (*cart_ram_read_cb)(uint16_t) = nullptr;
     void (*cart_ram_write_cb)(uint16_t, uint8_t) = nullptr;
 
-    // Returns the PPU's current internal mode (0-3), used for bus blocking:
-    // VRAM is inaccessible during mode 3, OAM during modes 2 and 3.
+    // Returns the PPU's current mode for bus blocking:
+    // READ: OAM blocked in mode 2 (immediate) + modes 2/3 (STAT-delayed);
+    //       VRAM blocked in mode 3 (STAT-delayed, or immediate on normal lines).
     int (*ppu_mode_cb)() = nullptr;
+    // WRITE: OAM/VRAM writes are blocked following the STAT-delayed mode only.
+    int (*ppu_write_mode_cb)() = nullptr;
 
     Memory() { data.resize(0x10000); }
 
@@ -70,8 +73,8 @@ public:
         }
 
         // Bus blocking on writes: VRAM during mode 3, OAM during modes 2/3.
-        if (ppu_mode_cb) {
-            int m = ppu_mode_cb();
+        if (ppu_write_mode_cb) {
+            int m = ppu_write_mode_cb();
             if (addr >= 0x8000 && addr <= 0x9FFF && m == 3) return;
             if (addr >= 0xFE00 && addr <= 0xFE9F && (m == 2 || m == 3)) return;
         }

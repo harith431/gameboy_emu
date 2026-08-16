@@ -51,17 +51,12 @@ Passing (50/50 in `run_tests.sh`):
 
 PPU tests passing: `intr_1_2_timing`, `intr_2_0_timing`, `intr_2_mode0_timing`,
 `intr_2_mode3_timing`, `stat_lyc_onoff`, `vblank_stat_intr`,
-`hblank_ly_scx_timing`, `stat_irq_blocking`, `intr_2_oam_ok_timing` (9/12).
+`hblank_ly_scx_timing`, `stat_irq_blocking`, `intr_2_oam_ok_timing`,
+`lcdon_timing`, `lcdon_write_timing` (11/12).
 
 PPU tests still failing: `intr_2_mode0_timing_sprites` (pixel-FIFO sprite-fetch
 timing is implemented and 104/105 of its cases pass; the remaining case — 10
-sprites at X=1 — is off by one dot), `lcdon_timing`, `lcdon_write_timing`.
-
-The LCD-on quirk is partially implemented: line 0 starts in mode 0 (no mode 2)
-and its mode 3 begins 5 dots early (dot 75, matching STAT mode 3 at dot 79).
-Still missing: the LY increment is ~4 T-cycles late on line 0 (and appears to
-be LYC-coincidence dependent), and OAM *write* blocking starts 2 T-cycles
-before STAT mode 3 on line 0.
+sprites at X=1 — is off by one dot).
 Also still failing/unverified: `mem_timing`, `halt_bug`, `oam_bug`, `dmg_sound`,
 `dmg-acid2`, and the mooneye OAM-DMA / serial / boot acceptance tests.
 
@@ -87,7 +82,7 @@ sync. Remaining work:
       simulation added; 104/105 `intr_2_mode0_timing_sprites` cases pass
       (10 sprites at X=1 is off by one dot)
 - [x] LCD-on: line 0 starts in mode 0 and mode 3 begins 5 dots early
-- [ ] LCD-on: line-0 LY increment timing + OAM-write 2-cycle offset
+- [x] LCD-on: line-0 LY increment (LYC-dependent) + OAM read/write offsets
 - [ ] OAM DMA timing (blocks CPU/bus for 160 cycles)
 - [ ] Result: blargg `mem_timing`, `halt_bug`, `oam_bug` pass; mooneye
       `acceptance/ppu/*`, `acceptance/oam_dma/*` pass

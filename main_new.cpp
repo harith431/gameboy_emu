@@ -205,7 +205,21 @@ int main(int argc, char** argv) {
     // Bus blocking follows the STAT-delayed mode (the same signal the STAT
     // register's mode bits report), so OAM/VRAM accessibility matches STAT
     // mode timing exactly (mooneye intr_2_oam_ok_timing).
-    memory.ppu_mode_cb   = []() { return memory.data[0xFF41] & 0x03; };
+    memory.ppu_mode_cb   = []() {
+        int internal = ppu.mode;
+        int stat = memory.data[0xFF41] & 0x03;
+        if (stat == 3) return 3;                    // OAM+VRAM blocked (delayed)
+        if (internal == 2) return 2;                // OAM blocked (mode 2)
+        if (internal == 3 && !ppu.line0) return 3;  // normal-line mode 3 immediate
+        return 0;
+    };
+    memory.ppu_write_mode_cb = []() {
+        int internal = ppu.mode;
+        int stat = memory.data[0xFF41] & 0x03;
+        if (stat == 3) return 3;                    // OAM+VRAM blocked (mode 3)
+        if (stat == 2 && internal == 2) return 2;   // OAM blocked (mode 2)
+        return 0;
+    };
 
     // Cartridge (MBC) callbacks.
     memory.cart_read_cb     = [](uint16_t a) { return cartridge.read(a); };
