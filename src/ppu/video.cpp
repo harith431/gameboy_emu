@@ -19,6 +19,10 @@ void init_video() {
         SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
+void set_window_title(const char* title) {
+    if (window) SDL_SetWindowTitle(window, title);
+}
+
 void render_frame(const uint8_t framebuffer[144][160]) {
     std::vector<uint32_t> pixels(144 * 160);
 

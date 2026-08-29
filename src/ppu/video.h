@@ -15,5 +15,6 @@ extern SDL_Texture* texture;
 extern bool g_headless;
 
 void init_video();
+void set_window_title(const char* title);
 void render_frame(const uint8_t framebuffer[144][160]);
 void cleanup_video();

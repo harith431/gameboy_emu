@@ -33,6 +33,8 @@ All of the following must be true:
   Link's Awakening, Pokémon Red/Blue, Kirby's Dream Land
 - [x] **Battery save** — `.sav` persistence for MBC RAM+battery carts
 - [x] **60 FPS** — frame pacing added (sleep to ~59.73 fps)
+- [x] **Game library** — launcher screen that imports, lists, removes and
+  launches `.gb`/`.gbc` ROMs from a `roms/` folder (plus a `--import` CLI flag)
 
 ---
 

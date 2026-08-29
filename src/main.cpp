@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "timer/timer.h"
 #include "cart/mbc.h"
 #include "apu/apu.h"
+#include "ui/library.h"
 
 Memory memory;
 PPU ppu;
@@ -25,7 +27,7 @@ uint8_t framebuffer[144][160];
 bool g_headless = false;
 
 // Advance the timer and PPU together by n T-cycles. Called by the CPU's
-// per-access sync (see cpu_new.h) and by the main loop.
+// per-access sync (see cpu.h) and by the main loop.
 void tick_components(int n) {
     if (n <= 0) return;
     timer.step(n);
@@ -380,27 +382,11 @@ static void load_state(const char* rom_path) {
     fprintf(stderr, "Loaded state: %s\n", path.c_str());
 }
 
-int main(int argc, char** argv) {
-    const char* rom_path = "bgbtest.gb";
-    uint64_t max_cycles = 0; // 0 = run forever (non-headless)
-    const char* screenshot_path = nullptr;
+// ---------------------------------------------------------------------------
+// Emulator wiring + state reset
+// ---------------------------------------------------------------------------
 
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--headless") == 0 || strcmp(argv[i], "-h") == 0) {
-            g_headless = true;
-        } else if (strcmp(argv[i], "--cycles") == 0 && i + 1 < argc) {
-            max_cycles = strtoull(argv[++i], nullptr, 10);
-        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
-            // Convenience: one frame = 456 clocks * 154 scanlines
-            max_cycles = strtoull(argv[++i], nullptr, 10) * 70224ull;
-        } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
-            screenshot_path = argv[++i];
-        } else {
-            rom_path = argv[i];
-        }
-    }
-
-    // Wire up timer register callbacks before any register writes happen.
+static void setup_memory_callbacks() {
     memory.div_write_cb  = []() { timer.write_div(); };
     memory.tima_read_cb  = []() -> uint8_t { return timer.read_tima(); };
     memory.tima_write_cb = [](uint8_t v) { timer.write_tima(v); };
@@ -436,15 +422,35 @@ int main(int argc, char** argv) {
     memory.cart_write_cb    = [](uint16_t a, uint8_t v) { cartridge.write(a, v); };
     memory.cart_ram_read_cb = [](uint16_t a) { return cartridge.read_ram(a); };
     memory.cart_ram_write_cb = [](uint16_t a, uint8_t v) { cartridge.write_ram(a, v); };
+}
 
-    init_fake_bios();
-
+static void reset_emulator_state() {
+    memory = Memory();
+    ppu = PPU();
+    cpu = CPU();
+    timer = Timer();
+    cartridge = Cartridge();
+    apu = APU();
+    input = Input();
     memset(framebuffer, 0, sizeof(framebuffer));
+
+    setup_memory_callbacks();
+    init_fake_bios();
     load_nintendo_logo();
     load_logo_tilemap();
+}
+
+// ---------------------------------------------------------------------------
+// Emulator main loop
+// ---------------------------------------------------------------------------
+
+static int run_emulator(const char* rom_path, uint64_t max_cycles,
+                        const char* screenshot_path) {
+    reset_emulator_state();
 
     if (!load_rom(rom_path)) {
         if (g_headless) return 1;
+        return 0;
     }
 
     // Battery-backed carts: load existing save data (if any).
@@ -456,7 +462,8 @@ int main(int argc, char** argv) {
 
     SDL_AudioDeviceID audio_dev = 0;
     if (!g_headless) {
-        init_video();
+        std::string title = read_rom_title(rom_path);
+        set_window_title(("Game Boy Emulator - " + title).c_str());
 
         // Audio (APU): queue-generated mono 16-bit samples.
         SDL_InitSubSystem(SDL_INIT_AUDIO);
@@ -467,7 +474,6 @@ int main(int argc, char** argv) {
         want.samples = 2048;
         audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, nullptr, 0);
         if (audio_dev) {
-            // Prime a little silence to avoid an initial underrun.
             int16_t silence[2048] = {0};
             SDL_QueueAudio(audio_dev, silence, sizeof(silence));
             SDL_PauseAudioDevice(audio_dev, 0);
@@ -493,6 +499,7 @@ int main(int argc, char** argv) {
                 if (e.type == SDL_KEYDOWN) {
                     if (e.key.keysym.sym == SDLK_F5) { save_state(rom_path); }
                     else if (e.key.keysym.sym == SDLK_F7) { load_state(rom_path); }
+                    else if (e.key.keysym.sym == SDLK_ESCAPE) { running = false; }
                     else input.key_event(e.key.keysym.sym, true);
                 } else if (e.type == SDL_KEYUP) {
                     input.key_event(e.key.keysym.sym, false);
@@ -505,9 +512,6 @@ int main(int argc, char** argv) {
             uint8_t ie = memory.read(0xFFFF);
             uint8_t iff = memory.read(0xFF0F);
             if (ie & iff & 0x1F) {
-                // Wake from HALT. If IME is set, service the interrupt;
-                // otherwise just resume (the HALT bug only applies when the
-                // interrupt was pending *at* the HALT, handled in the CPU).
                 cpu.halted = false;
                 if (cpu.IME) {
                     cpu.handleInterrupts();
@@ -523,8 +527,6 @@ int main(int argc, char** argv) {
         cpu.handleInterrupts();
 
         int cyc = cpu.step();
-        // Advance any instruction cycles not already covered by the CPU's
-        // per-access bus sync (internal ALU cycles, etc.).
         tick_components(cyc - cpu.synced_cycle);
         total_cycles += cyc;
         cpu.cycles = 0;
@@ -560,6 +562,73 @@ int main(int argc, char** argv) {
     if (audio_dev) SDL_CloseAudioDevice(audio_dev);
 
     if (screenshot_path) write_bmp(screenshot_path, framebuffer);
-    if (!g_headless) cleanup_video();
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+int main(int argc, char** argv) {
+    const char* rom_path = nullptr;
+    bool has_rom = false;
+    uint64_t max_cycles = 0; // 0 = run forever (non-headless)
+    const char* screenshot_path = nullptr;
+    const char* import_file = nullptr;
+    bool force_library = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--headless") == 0 || strcmp(argv[i], "-h") == 0) {
+            g_headless = true;
+        } else if (strcmp(argv[i], "--library") == 0) {
+            force_library = true;
+        } else if (strcmp(argv[i], "--import") == 0 && i + 1 < argc) {
+            import_file = argv[++i];
+        } else if (strcmp(argv[i], "--cycles") == 0 && i + 1 < argc) {
+            max_cycles = strtoull(argv[++i], nullptr, 10);
+        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            max_cycles = strtoull(argv[++i], nullptr, 10) * 70224ull;
+        } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
+            screenshot_path = argv[++i];
+        } else {
+            rom_path = argv[i];
+            has_rom = true;
+        }
+    }
+
+    // CLI import: copy a ROM into the library and exit.
+    if (import_file) {
+        std::string err;
+        if (import_rom(import_file, "roms", err)) {
+            printf("Imported '%s' into roms/\n", import_file);
+            return 0;
+        }
+        fprintf(stderr, "Import failed: %s\n", err.c_str());
+        return 1;
+    }
+
+    // Headless: test ROMs run without a window or audio.
+    if (g_headless) {
+        const char* r = has_rom ? rom_path : "bgbtest.gb";
+        return run_emulator(r, max_cycles, screenshot_path);
+    }
+
+    // Interactive: initialize video once, then play a ROM directly or show
+    // the library launcher.
+    init_video();
+
+    int rc = 0;
+    if (has_rom && !force_library) {
+        rc = run_emulator(rom_path, max_cycles, screenshot_path);
+    } else {
+        std::string rom_dir = "roms";
+        while (true) {
+            std::string chosen = run_library_screen(rom_dir);
+            if (chosen.empty()) break;
+            run_emulator(chosen.c_str(), 0, nullptr);
+        }
+    }
+
+    cleanup_video();
+    return rc;
 }

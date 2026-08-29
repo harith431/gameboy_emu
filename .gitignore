@@ -25,3 +25,17 @@ Thumbs.db
 
 # Debug logs
 *.log
+
+# Dev scratch files
+*.tmp
+debug.txt
+events.txt
+keys.txt
+serial_out.txt
+ref_*.json
+
+# Downloaded test ROMs (get them separately, see GOALS.md)
+test_roms/
+
+# Legacy / unused third-party headers
+json.hpp

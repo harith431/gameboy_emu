@@ -22,6 +22,7 @@ close to the real silicon and verified against the hardware test suites
 | **Joypad** | ✅ keyboard |
 | **Battery save** (`.sav`), **save states** (F5/F7) | ✅ |
 | **Frame pacing** (~59.73 fps) | ✅ |
+| **Game library** (import & pick ROMs from a launcher screen) | ✅ |
 
 ### Test scoreboard
 - `run_tests.sh` — **50/50** (CPU + timer + MBC)
@@ -72,12 +73,28 @@ cmake --build .
 
 ### Run
 ```bash
-./play.sh                 # plays tetris.gb (auto PATH for SDL2)
-./play.sh mygame.gb
+./play.sh                 # opens the game library launcher
+./play.sh mygame.gb       # plays a specific ROM directly
 ./build/gameboy_emu.exe rom.gb --headless --cycles 500000000   # test ROMs
+./build/gameboy_emu.exe --import path/to/rom.gb                 # add a ROM to the library
 ```
 
+Running with no ROM argument opens the **library screen**: a launcher that
+lists every game in `roms/`, lets you **import** new `.gb`/`.gbc` files from
+disk, **remove** them, and **pick** one to play. Press **Esc** in-game to
+return to the library.
+
+### Library controls
+| Key | Action |
+|-----|--------|
+| Up / Down | Move selection |
+| Enter | Play selected game |
+| I | Import a ROM (opens a file browser) |
+| Del / Backspace | Remove selected game |
+| Esc | Quit / cancel |
+
 ### Controls
+### In-game controls
 | Key | Game Boy button |
 |-----|-----------------|
 | Arrow keys (or WASD) | D-Pad |
@@ -86,6 +103,7 @@ cmake --build .
 | Enter / Space | Start |
 | Left/Right Shift | Select |
 | F5 / F7 | Save / Load state |
+| Esc | Return to library |
 
 ---
 
@@ -107,8 +125,13 @@ src/
 │   └── timer.h      # cycle-accurate timer (shared divider, reload state machine)
 ├── input/
 │   └── input.h      # joypad + keyboard
+├── ui/
+│   ├── font.h       # embedded 5x7 bitmap font (no SDL_ttf dependency)
+│   ├── library.h/.cpp  # library launcher + ROM import/file browser
 └── main.cpp         # wiring, main loop, frame pacing, save states
 
+roms/                # game library (drop .gb/.gbc files here)
+tools/gen_font.py    # regenerates src/ui/font.h
 legacy/              # first-iteration scaffolding (not built)
 ├── main.cpp
 ├── CPU.h
@@ -127,6 +150,7 @@ Plus `GOALS.md` (milestones + scoreboard) and `AGENTS.md` (architecture notes).
 - [x] APU (4 channels + SDL output)
 - [x] Battery save + save states
 - [x] Frame pacing
+- [x] Game library (import / select / remove ROMs)
 - [ ] `dmg_sound` + `dmg-acid2` verification
 - [ ] `oam_bug` exact-pattern sub-tests
 - [ ] Serial link (2-player)

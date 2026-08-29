@@ -13,6 +13,7 @@ set(SOURCES
     src/core/cpu.cpp
     src/ppu/ppu.cpp
     src/ppu/video.cpp
+    src/ui/library.cpp
 )
 
 # Headers
