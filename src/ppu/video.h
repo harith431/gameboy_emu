@@ -4,7 +4,7 @@
 
 constexpr auto SCREEN_WIDTH = 160;
 constexpr auto SCREEN_HEIGHT = 144;
-constexpr auto SCALE = 4;
+constexpr auto SCALE = 5;
 
 extern SDL_Window* window;
 extern SDL_Renderer* renderer;

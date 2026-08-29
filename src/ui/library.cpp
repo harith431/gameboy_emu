@@ -323,26 +323,29 @@ void render_list_view(SDL_Renderer* r, const std::string& header,
     set_color(r, COL_BG);
     SDL_RenderClear(r);
 
-    int scale = 2;
-    draw_text(r, 12, 8, header, scale, COL_TEXT);
-    if (!path_line.empty())
-        draw_text(r, 12, 8 + 8 * scale, path_line, 1, COL_DIM);
+    const int rscale = 3;         // list rows
+    const int hscale = 2;         // header / path
+    const int row_h = 8 * rscale; // 24 px per row
 
-    int list_y = 8 + 2 * (8 * scale) + 4;
+    draw_text(r, 12, 10, header, hscale, COL_TEXT);
+    if (!path_line.empty())
+        draw_text(r, 12, 10 + 8 * hscale + 4, path_line, 2, COL_DIM);
+
+    int list_y = 10 + 2 * (8 * hscale) + 10;
     for (int i = 0; i < (int)rows.size() && i < scroll + max_visible; i++) {
         if (i < scroll) continue;
-        int y = list_y + (i - scroll) * (8 * scale);
+        int y = list_y + (i - scroll) * row_h;
         bool is_sel = (i == selected);
         if (is_sel) {
-            SDL_Rect bar = { 8, y - 2, SCREEN_WIDTH * SCALE - 16, 8 * scale };
+            SDL_Rect bar = { 8, y - 3, SCREEN_WIDTH * SCALE - 16, row_h };
             set_color(r, COL_HILITE);
             SDL_RenderFillRect(r, &bar);
         }
-        draw_text(r, 14, y, rows[i], scale, is_sel ? COL_ACCENT : COL_TEXT);
+        draw_text(r, 14, y, rows[i], rscale, is_sel ? COL_ACCENT : COL_TEXT);
     }
 
     set_color(r, COL_DIM);
-    SDL_Rect footer_bar = { 8, SCREEN_HEIGHT * SCALE - 24, SCREEN_WIDTH * SCALE - 16, 1 };
+    SDL_Rect footer_bar = { 8, SCREEN_HEIGHT * SCALE - 28, SCREEN_WIDTH * SCALE - 16, 1 };
     SDL_RenderFillRect(r, &footer_bar);
 }
 
@@ -350,7 +353,7 @@ std::string browse_for_rom() {
     std::string dir = current_dir();
     int selected = 0;
     int scroll = 0;
-    const int max_visible = 22;
+    const int max_visible = 20;
     std::string result;
 
     bool running = true;
@@ -371,9 +374,9 @@ std::string browse_for_rom() {
 
         render_list_view(renderer, "IMPORT ROM - pick a .gb/.gbc file",
                          truncate(dir, 100), rows, selected, scroll, max_visible);
-        draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 16,
+        draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 18,
                   "UP/DOWN select   ENTER open   BACKSPACE up   ESC cancel",
-                  1, COL_DIM);
+                  2, COL_DIM);
         SDL_RenderPresent(renderer);
 
         SDL_Event e;
@@ -423,7 +426,7 @@ std::string run_library_screen(const std::string& rom_dir) {
     std::vector<GameEntry> games = scan_library(rom_dir);
     int selected = 0;
     int scroll = 0;
-    const int max_visible = 26;
+    const int max_visible = 20;
 
     std::string result;
     bool running = true;
@@ -443,34 +446,35 @@ std::string run_library_screen(const std::string& rom_dir) {
         set_color(renderer, COL_BG);
         SDL_RenderClear(renderer);
 
-        draw_text_centered(renderer, 8, "GAME BOY LIBRARY", 2, COL_TEXT);
+        draw_text_centered(renderer, 12, "GAME BOY LIBRARY", 4, COL_TEXT);
 
         std::string sub = std::to_string(games.size()) + " game(s) in library  [" + rom_dir + "]";
-        draw_text_centered(renderer, 32, sub, 1, COL_DIM);
+        draw_text_centered(renderer, 48, sub, 2, COL_DIM);
 
-        int list_y = 48;
+        int list_y = 84;
+        const int row_h = 24;
         if (games.empty()) {
-            draw_text(renderer, 14, list_y, "No games yet.", 2, COL_TEXT);
-            draw_text(renderer, 14, list_y + 20, "Press I to import a ROM from disk.", 1, COL_DIM);
+            draw_text(renderer, 14, list_y, "No games yet.", 3, COL_TEXT);
+            draw_text(renderer, 14, list_y + 32, "Press I to import a ROM from disk.", 2, COL_DIM);
         } else {
             for (int i = scroll; i < (int)games.size() && i < scroll + max_visible; i++) {
-                int y = list_y + (i - scroll) * 16;
+                int y = list_y + (i - scroll) * row_h;
                 bool is_sel = (i == selected);
                 if (is_sel) {
-                    SDL_Rect bar = { 8, y - 2, SCREEN_WIDTH * SCALE - 16, 16 };
+                    SDL_Rect bar = { 8, y - 3, SCREEN_WIDTH * SCALE - 16, row_h };
                     set_color(renderer, COL_HILITE);
                     SDL_RenderFillRect(renderer, &bar);
                 }
-                std::string line = truncate(games[i].title, 48);
+                std::string line = truncate(games[i].title, 40);
                 if (to_lower(games[i].title) != to_lower(games[i].filename))
-                    line += "  (" + truncate(games[i].filename, 24) + ")";
+                    line += "  (" + truncate(games[i].filename, 20) + ")";
                 std::string prefix = is_sel ? "> " : "  ";
-                draw_text(renderer, 14, y, prefix + line, 2, is_sel ? COL_ACCENT : COL_TEXT);
+                draw_text(renderer, 14, y, prefix + line, 3, is_sel ? COL_ACCENT : COL_TEXT);
             }
         }
 
         set_color(renderer, COL_DIM);
-        SDL_Rect footer_bar = { 8, SCREEN_HEIGHT * SCALE - 24, SCREEN_WIDTH * SCALE - 16, 1 };
+        SDL_Rect footer_bar = { 8, SCREEN_HEIGHT * SCALE - 28, SCREEN_WIDTH * SCALE - 16, 1 };
         SDL_RenderFillRect(renderer, &footer_bar);
 
         std::string footer;
@@ -479,7 +483,7 @@ std::string run_library_screen(const std::string& rom_dir) {
         } else {
             footer = "ENTER play   I import   DEL remove   ESC quit";
         }
-        draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 16, footer, 1, COL_TEXT);
+        draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 18, footer, 2, COL_TEXT);
 
         SDL_RenderPresent(renderer);
 
@@ -517,8 +521,8 @@ std::string run_library_screen(const std::string& rom_dir) {
                                 games = scan_library(rom_dir);
                                 clamp();
                             } else {
-                                draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 16,
-                                          "Import failed: " + err, 1, COL_TEXT);
+                                draw_text(renderer, 12, SCREEN_HEIGHT * SCALE - 18,
+                                          "Import failed: " + err, 2, COL_TEXT);
                                 SDL_RenderPresent(renderer);
                                 SDL_Delay(1200);
                             }
