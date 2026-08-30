@@ -23,6 +23,10 @@ Thumbs.db
 *.gb
 *.gbc
 
+# Runtime save data (battery saves / save states)
+*.sav
+*.state
+
 # Debug logs
 *.log
 
