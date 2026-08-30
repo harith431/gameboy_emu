@@ -111,7 +111,7 @@ lines.append("static constexpr uint8_t FONT5X7[95][7] = {")
 for c in order:
     rows = FONT[c]
     rowstr = ",".join("0x%02X" % r for r in rows)
-    label = c if c not in ("'", "\\", '"') else "\\" + c
+    label = "backslash" if c == "\\" else c
     lines.append("    {%s}, // %s" % (rowstr, label))
 lines.append("};")
 lines.append("")
